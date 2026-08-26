@@ -1,4 +1,4 @@
-import { eq, and, sql } from "db";
+import { db, eq, and, sql } from "db";
 import {
   events,
   eventSettings,
@@ -14,6 +14,7 @@ import {
 import { GameError } from "./errors";
 import { recordAudit } from "./audit";
 import { runInTransaction, type Tx } from "./tx";
+import { drawShockCard, applyMaterialEffect, applyGlobalEffect, type ShockEffect } from "./market-shock-service";
 
 // Section 6.2/6.3 workflows, Section 3.1 issues #1-4, made concrete:
 //   - one service, no in-memory session state (contrast with the legacy
@@ -43,6 +44,28 @@ async function assertStage1(tx: Tx, eventId: string) {
     throw new GameError("invalid_event_stage", "The material auction is only open during Stage 1.");
   }
   return event;
+}
+
+// Once every lot in a round has left "pending"/"live" (closed, unsold, or
+// voided), the round itself is done — nothing in Section 5.3 ever flips
+// auction_rounds.status away from "active" on its own, so without this a
+// round would stay "active" forever and startRound's "only one active
+// round at a time" guard would permanently block the next material.
+async function completeRoundIfFinished(tx: Tx, eventId: string, roundId: string) {
+  const [stillOpen] = await tx
+    .select({ id: auctionLots.id })
+    .from(auctionLots)
+    .where(and(eq(auctionLots.roundId, roundId), sql`${auctionLots.status} in ('pending', 'live')`));
+  if (stillOpen) return;
+
+  await tx
+    .update(auctionRounds)
+    .set({ status: "completed", closedAt: new Date() })
+    .where(eq(auctionRounds.id, roundId));
+  await tx
+    .update(events)
+    .set({ activeRoundId: null })
+    .where(and(eq(events.id, eventId), eq(events.activeRoundId, roundId)));
 }
 
 async function assertTeamLeader(tx: Tx, eventId: string, teamId: string, participantId: string) {
@@ -95,13 +118,23 @@ export async function startRound(params: {
       .from(auctionRounds)
       .where(eq(auctionRounds.eventId, params.eventId));
 
+    const sequence = (nextSequence?.maxSequence ?? 0) + 1;
+
+    // Rulebook: "At the start of every round after the first, flip one
+    // Market Shock card." A card whose effect doesn't concern this round's
+    // material still gets revealed (moderator sees it, teams see it) —
+    // see market-shock-service.ts's applyMaterialEffect comment for why
+    // that's the intended behavior, not a bug.
+    const drawnShock = sequence > 1 ? await drawShockCard(tx, params.eventId) : null;
+
     const [round] = await tx
       .insert(auctionRounds)
       .values({
         eventId: params.eventId,
         materialTypeId: params.materialTypeId,
-        sequence: (nextSequence?.maxSequence ?? 0) + 1,
+        sequence,
         status: "active",
+        marketShockCardId: drawnShock?.cardId,
         startedAt: new Date(),
       })
       .returning();
@@ -109,18 +142,31 @@ export async function startRound(params: {
     const [settings] = await tx.select().from(eventSettings).where(eq(eventSettings.eventId, params.eventId));
     if (!settings) throw new GameError("not_found", "Event settings not found.");
 
-    const openingBid = params.openingBidOverride ?? material.defaultOpeningBid;
+    let openingBid = params.openingBidOverride ?? material.defaultOpeningBid;
+    let perLotOpeningBidOverrides = new Map<number, number>();
+    let shockNote: string | null = null;
+
+    if (drawnShock && !params.openingBidOverride) {
+      const effect: ShockEffect = JSON.parse(drawnShock.effectJson);
+      const materialResult = applyMaterialEffect(effect, material, activeTeams.length);
+      openingBid = materialResult.adjustedOpeningBid;
+      perLotOpeningBidOverrides = materialResult.perLotOpeningBidOverrides;
+      const globalNote = await applyGlobalEffect(tx, params.eventId, effect, params.actorParticipantId);
+      shockNote = globalNote ?? materialResult.note;
+    }
+
     const minimumRaise = computeMinimumRaise(openingBid, settings);
 
     let lotNumber = 1;
     for (const team of activeTeams) {
+      const thisLotOpeningBid = perLotOpeningBidOverrides.get(lotNumber) ?? openingBid;
       const [materialLot] = await tx
         .insert(materialLots)
         .values({
           eventId: params.eventId,
           materialTypeId: material.id,
           quantity: material.defaultLotQuantity,
-          openingBid,
+          openingBid: thisLotOpeningBid,
           source: "auction",
           status: "auctioning",
         })
@@ -131,8 +177,8 @@ export async function startRound(params: {
         roundId: round.id,
         materialLotId: materialLot.id,
         lotNumber: lotNumber++,
-        openingBid,
-        minimumRaise,
+        openingBid: thisLotOpeningBid,
+        minimumRaise: computeMinimumRaise(thisLotOpeningBid, settings),
         status: "pending",
       });
     }
@@ -145,13 +191,19 @@ export async function startRound(params: {
       action: "auction_round.started",
       entityType: "auction_round",
       entityId: round.id,
-      afterJson: { round, materialKey: material.key, lotCount: activeTeams.length },
+      afterJson: { round, materialKey: material.key, lotCount: activeTeams.length, shock: drawnShock },
     });
 
     queueBroadcast({
       eventId: params.eventId,
       type: "auction.round_started",
-      data: { roundId: round.id, materialKey: material.key, materialName: material.name, lotCount: activeTeams.length },
+      data: {
+        roundId: round.id,
+        materialKey: material.key,
+        materialName: material.name,
+        lotCount: activeTeams.length,
+        shock: drawnShock ? { title: drawnShock.title, description: drawnShock.description, appliedNote: shockNote } : null,
+      },
     });
 
     return round;
@@ -346,6 +398,7 @@ export async function closeLot(params: {
         data: { auctionLotId: lot.id, winnerTeamId: null },
       });
 
+      await completeRoundIfFinished(tx, params.eventId, lot.roundId);
       return { winnerTeamId: null as string | null };
     }
 
@@ -377,6 +430,7 @@ export async function closeLot(params: {
         data: { auctionLotId: lot.id, winnerTeamId: null, voidedForNonPayment: true },
       });
 
+      await completeRoundIfFinished(tx, params.eventId, lot.roundId);
       return { winnerTeamId: null as string | null };
     }
 
@@ -419,6 +473,35 @@ export async function closeLot(params: {
       data: { auctionLotId: lot.id, winnerTeamId: team.id, amount: winningBid.amount },
     });
 
+    await completeRoundIfFinished(tx, params.eventId, lot.roundId);
     return { winnerTeamId: team.id as string | null };
   });
+}
+
+// Section 5.3: "opens_at, closes_at — The authoritative timer." Nothing
+// client-side is trusted to decide a lot is over; something server-side
+// has to actually notice closesAt has passed and call closeLot. This sweep
+// is that "something" — see backend/src/index.ts, which is the one
+// long-running process able to poll it on an interval (Section 9 Phase
+// 2's "moderator round and lot control" implicitly needs this for lots
+// the moderator doesn't manually close in time).
+export async function closeExpiredLots(): Promise<{ closedLotIds: string[] }> {
+  const expired = await db
+    .select({ id: auctionLots.id, eventId: auctionLots.eventId })
+    .from(auctionLots)
+    .where(and(eq(auctionLots.status, "live"), sql`${auctionLots.closesAt} < now()`));
+
+  const closedLotIds: string[] = [];
+  for (const lot of expired) {
+    try {
+      await closeLot({ eventId: lot.eventId, auctionLotId: lot.id, actorParticipantId: null });
+      closedLotIds.push(lot.id);
+    } catch (err) {
+      // One lot's sweep failing (e.g. it was just closed manually a
+      // moment ago and no longer matches) must never stop the others from
+      // being checked.
+      console.error("closeExpiredLots: failed to close lot", lot.id, err);
+    }
+  }
+  return { closedLotIds };
 }

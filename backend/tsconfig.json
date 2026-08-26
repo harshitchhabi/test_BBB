@@ -6,9 +6,13 @@
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
     "types": ["node"],
     "paths": {
-      "common": ["../packages/common/src/index.ts"]
+      "common": ["../packages/common/src/index.ts"],
+      "db": ["../packages/db/index.ts"],
+      "db/schema": ["../packages/db/schema/index.ts"],
+      "game-engine": ["../packages/game-engine/src/index.ts"]
     }
   },
   "include": ["src/**/*.ts"]

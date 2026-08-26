@@ -4,19 +4,27 @@
 // alongside backend/lib/bidding-manager.ts's *other* copy of the same
 // rules. Neither survived a restart and nothing stopped them disagreeing.
 //
-// This process now does exactly one job: hold the WebSocket connections
-// (which the serverless Next.js frontend cannot), and relay an
-// already-committed event from packages/game-engine to every client
-// watching that event. No database access. No rule enforcement. If this
-// process crashes and restarts, no game state is lost — clients just
-// resync from the database via a normal fetch on reconnect.
+// This process holds the WebSocket connections (which the serverless
+// Next.js frontend cannot) and relays an already-committed event from
+// packages/game-engine to every client watching that event — still with
+// zero bidding/trading/scoring rules of its own (Section 3.1 #1 stays
+// fixed: every rule lives in packages/game-engine, single-sourced). As of
+// Phase 2 it also runs the timer-expiry sweep below, the one thing that
+// genuinely needs a long-running process: nothing client-side is trusted
+// to decide a lot's timer has run out (Section 5.3), and a serverless API
+// route has no persistent interval to poll it. If this process crashes and
+// restarts, no game state is lost — worst case, an already-expired lot
+// gets closed a few seconds late once the sweep resumes.
 import "dotenv/config";
 import { createServer, type IncomingMessage } from "node:http";
 import { WebSocketServer, WebSocket } from "ws";
 import type { WsBroadcastEnvelope } from "common";
+import { closeExpiredLots } from "game-engine";
 
 const PORT = Number(process.env.PORT ?? 8080);
 const INTERNAL_BROADCAST_SECRET = process.env.INTERNAL_BROADCAST_SECRET;
+const TIMER_SWEEP_INTERVAL_MS = Number(process.env.TIMER_SWEEP_INTERVAL_MS ?? 2000);
+const ENABLE_TIMER_SWEEP = process.env.ENABLE_TIMER_SWEEP !== "false";
 
 if (!INTERNAL_BROADCAST_SECRET) {
   console.warn(
@@ -123,6 +131,20 @@ server.listen(PORT, () => {
   console.log(`Broadcast relay listening on :${PORT} (ws path /ws, POST /internal/broadcast)`);
 });
 
+let sweepTimer: NodeJS.Timeout | null = null;
+if (ENABLE_TIMER_SWEEP) {
+  if (!process.env.DATABASE_URL) {
+    console.warn("⚠️  ENABLE_TIMER_SWEEP is on but DATABASE_URL is not set — the sweep will error every tick.");
+  }
+  sweepTimer = setInterval(() => {
+    closeExpiredLots().catch((err) => console.error("Timer sweep failed:", err));
+  }, TIMER_SWEEP_INTERVAL_MS);
+  console.log(`Timer sweep running every ${TIMER_SWEEP_INTERVAL_MS}ms.`);
+} else {
+  console.log("Timer sweep disabled (ENABLE_TIMER_SWEEP=false).");
+}
+
 process.on("SIGTERM", () => {
+  if (sweepTimer) clearInterval(sweepTimer);
   wss.close(() => server.close(() => process.exit(0)));
 });

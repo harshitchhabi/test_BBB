@@ -2,14 +2,16 @@
   "name": "backend",
   "version": "1.0.0",
   "private": true,
-  "description": "WebSocket broadcast relay only. Per Section 3.1 #1 ('Unify the bidding service'), this process holds zero game logic and zero DB connection — it just fans out events that packages/game-engine POSTs to it after a transaction commits, to whichever clients have joined that event's room. All rules/persistence live in packages/game-engine, called from frontend/ API routes.",
+  "description": "WebSocket broadcast relay, plus one small addition as of Phase 2: the timer-expiry sweep (Section 5.3 'opens_at, closes_at — the authoritative timer'). It still holds zero bidding/trading/scoring RULES — every mutation it triggers still goes through packages/game-engine's closeLot, so the rules stay single-sourced (Section 3.1 #1) — but it is the one long-running process able to poll 'has this lot's timer expired' on an interval, which a serverless Next.js API route cannot do.",
   "scripts": {
     "dev": "tsx src/index.ts",
     "start": "node --import tsx src/index.ts"
   },
   "dependencies": {
     "common": "file:../packages/common",
+    "db": "file:../packages/db",
     "dotenv": "^16.5.0",
+    "game-engine": "file:../packages/game-engine",
     "ws": "^8.18.2"
   },
   "devDependencies": {

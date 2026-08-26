@@ -4,6 +4,9 @@
   "private": true,
   "main": "src/index.ts",
   "types": "src/index.ts",
+  "scripts": {
+    "test": "vitest run"
+  },
   "description": "The single server-side game rules engine (Section 3.1 / 4 / 9 Phase 1: 'Unify the bidding service' / 'Consolidate bidding into one server-side game service'). Only this package writes to game-state tables — Next.js API routes call into it, they never touch packages/db directly for command handling.",
   "dependencies": {
     "common": "file:../common",
@@ -11,7 +14,12 @@
     "drizzle-orm": "^0.44.3"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.7",
+    "@electric-sql/pglite-socket": "^0.2.10",
     "@types/node": "^20.14.0",
-    "typescript": "^5.5.4"
+    "@types/pg": "^8.23.1",
+    "pg": "^8.23.0",
+    "typescript": "^5.5.4",
+    "vitest": "^4.1.11"
   }
 }

@@ -6,6 +6,13 @@ import { Pool } from "pg";
 import * as schema from "./schema";
 import { eq, and, sql } from "drizzle-orm";
 
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+// DB_POOL_MAX exists purely for the pglite-socket-backed test harness
+// (packages/game-engine/tests/test-db.ts), which cannot reliably service
+// more than one concurrent socket connection. Leave it unset in every real
+// deployment — pg.Pool's normal default (10) applies.
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  max: process.env.DB_POOL_MAX ? Number(process.env.DB_POOL_MAX) : undefined,
+});
 export const db = drizzle(pool, { schema });
-export { eq, and, sql };
+export { eq, and, sql, pool };

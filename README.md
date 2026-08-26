@@ -8,9 +8,9 @@ pattern, Next.js/Drizzle conventions, and folder layout are being reused
 where they fit; its game-state model is being replaced per the plan's
 Section 3 gap assessment).
 
-Status: **Phase 1 complete** (see `docs/phase-0.md`, `docs/phase-1.md`).
-Phase 2 (full Stage 1 live auction: market shocks, moderator round
-control, the Live Auction screen) not yet started.
+Status: **Phase 2 complete** (see `docs/phase-0.md`, `docs/phase-1.md`,
+`docs/phase-2.md`). Phase 3 (Stage 2: inventory ledger, trading, bank
+purchases, construction/deeds, bonuses, inspections) not yet started.
 
 ## Layout
 
@@ -18,25 +18,32 @@ control, the Live Auction screen) not yet started.
 packages/db/          Drizzle schema (schema/), migrations/, seed data (seed/)
 packages/common/      Shared types: WS event envelope, role vocabulary
 packages/game-engine/ The one server-side game rules engine — every mutation
-                       goes through here (team/auction services, tx + audit
-                       + broadcast helpers)
+                       goes through here (team/auction/market-shock services,
+                       tx + audit + broadcast helpers). Has a real test suite
+                       (tests/) run against a real Postgres — see phase-2.md.
 frontend/             Next.js app: Google auth (ported from legacy) +
-                       Section 8.1 command endpoints under src/app/api/**
-backend/              WebSocket broadcast relay only — no DB, no rules
+                       Section 8.1 command endpoints under src/app/api/**,
+                       plus the Stage 1 team/moderator screens
+backend/              WebSocket broadcast relay + the timer-expiry sweep
+                       (still zero game rules of its own — see phase-2.md)
 ```
 
-## Running Phase 1 locally
+## Running it locally
 
 ```
 # 1. Point packages/db/.env and frontend/.env at your own dev Postgres +
 #    OAuth credentials (see each package's .env.example).
 cd packages/db && npm run migrate && npx tsx seed/run.ts "Test Event"
 
-# 2. In one terminal — the WS relay:
+# 2. In one terminal — the WS relay + timer sweep:
 cd backend && npm run dev
 
 # 3. In another — the app:
 cd frontend && npm run dev
+
+# Run the game-engine's automated test suite (spins up its own throwaway
+# Postgres, no setup needed):
+cd packages/game-engine && npm test
 ```
 
 ## Local setup
