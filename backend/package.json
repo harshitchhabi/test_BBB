@@ -1,0 +1,21 @@
+{
+  "name": "backend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "WebSocket broadcast relay only. Per Section 3.1 #1 ('Unify the bidding service'), this process holds zero game logic and zero DB connection — it just fans out events that packages/game-engine POSTs to it after a transaction commits, to whichever clients have joined that event's room. All rules/persistence live in packages/game-engine, called from frontend/ API routes.",
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "start": "node --import tsx src/index.ts"
+  },
+  "dependencies": {
+    "common": "file:../packages/common",
+    "dotenv": "^16.5.0",
+    "ws": "^8.18.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/ws": "^8.18.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.5.4"
+  }
+}
