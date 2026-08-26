@@ -1,0 +1,9 @@
+{
+  "name": "bricks-by-bid",
+  "private": true,
+  "workspaces": [
+    "frontend",
+    "backend",
+    "packages/*"
+  ]
+}
