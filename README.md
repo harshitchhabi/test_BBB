@@ -8,9 +8,9 @@ pattern, Next.js/Drizzle conventions, and folder layout are being reused
 where they fit; its game-state model is being replaced per the plan's
 Section 3 gap assessment).
 
-Status: **Phase 2 complete** (see `docs/phase-0.md`, `docs/phase-1.md`,
-`docs/phase-2.md`). Phase 3 (Stage 2: inventory ledger, trading, bank
-purchases, construction/deeds, bonuses, inspections) not yet started.
+Status: **Phase 3 complete** (see `docs/phase-0.md` through
+`docs/phase-3.md`). Phase 4 (Stage 3: city auction, scout reports, hidden
+multipliers, scoring/tiebreakers) not yet started.
 
 ## Layout
 

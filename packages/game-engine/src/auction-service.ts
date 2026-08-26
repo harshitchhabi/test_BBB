@@ -3,7 +3,6 @@ import {
   events,
   eventSettings,
   teams,
-  teamMembers,
   materialTypes,
   materialLots,
   auctionRounds,
@@ -15,6 +14,7 @@ import { GameError } from "./errors";
 import { recordAudit } from "./audit";
 import { runInTransaction, type Tx } from "./tx";
 import { drawShockCard, applyMaterialEffect, applyGlobalEffect, type ShockEffect } from "./market-shock-service";
+import { assertTeamLeaderTx, assertStaffTx } from "./team-service";
 
 // Section 6.2/6.3 workflows, Section 3.1 issues #1-4, made concrete:
 //   - one service, no in-memory session state (contrast with the legacy
@@ -68,16 +68,6 @@ async function completeRoundIfFinished(tx: Tx, eventId: string, roundId: string)
     .where(and(eq(events.id, eventId), eq(events.activeRoundId, roundId)));
 }
 
-async function assertTeamLeader(tx: Tx, eventId: string, teamId: string, participantId: string) {
-  const [membership] = await tx
-    .select({ role: teamMembers.role, teamId: teamMembers.teamId })
-    .from(teamMembers)
-    .where(and(eq(teamMembers.eventId, eventId), eq(teamMembers.participantId, participantId)));
-  if (!membership || membership.teamId !== teamId || membership.role !== "leader") {
-    throw new GameError("forbidden", "Only the team leader may bid for this team.");
-  }
-}
-
 // Instantiates one auction lot per active team for a material round —
 // rulebook: "For each team in the room, the moderator adds one of each lot
 // below." Each lot gets its own material_lot (the finite, real unit being
@@ -93,6 +83,7 @@ export async function startRound(params: {
 }) {
   return runInTransaction(async (tx, queueBroadcast) => {
     const event = await assertStage1(tx, params.eventId);
+    await assertStaffTx(tx, params.eventId, params.actorParticipantId);
 
     const [material] = await tx.select().from(materialTypes).where(eq(materialTypes.id, params.materialTypeId));
     if (!material) throw new GameError("not_found", "Material type not found.");
@@ -213,6 +204,7 @@ export async function startRound(params: {
 export async function openNextLot(params: { eventId: string; roundId: string; actorParticipantId: string }) {
   return runInTransaction(async (tx, queueBroadcast) => {
     await assertStage1(tx, params.eventId);
+    await assertStaffTx(tx, params.eventId, params.actorParticipantId);
 
     const [settings] = await tx.select().from(eventSettings).where(eq(eventSettings.eventId, params.eventId));
     if (!settings) throw new GameError("not_found", "Event settings not found.");
@@ -275,7 +267,7 @@ export async function placeBid(params: {
 }) {
   return runInTransaction(async (tx, queueBroadcast) => {
     await assertStage1(tx, params.eventId);
-    await assertTeamLeader(tx, params.eventId, params.teamId, params.actingParticipantId);
+    await assertTeamLeaderTx(tx, params.eventId, params.teamId, params.actingParticipantId);
 
     // Lock the team row first, then the lot row, in a fixed order —
     // always team-then-lot — so two concurrent bids from the same team on
@@ -366,6 +358,12 @@ export async function closeLot(params: {
   reason?: string;
 }) {
   return runInTransaction(async (tx, queueBroadcast) => {
+    // null means the timer sweep closed it, not a person — see
+    // closeExpiredLots below. Anyone else must be staff.
+    if (params.actorParticipantId !== null) {
+      await assertStaffTx(tx, params.eventId, params.actorParticipantId);
+    }
+
     const [lot] = await tx.select().from(auctionLots).where(eq(auctionLots.id, params.auctionLotId)).for("update");
     if (!lot || lot.eventId !== params.eventId) throw new GameError("not_found", "Auction lot not found.");
     if (lot.status !== "live") throw new GameError("conflict", "Only a live lot can be closed.");

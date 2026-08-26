@@ -5,6 +5,47 @@ import { GameError } from "./errors";
 import { recordAudit } from "./audit";
 import { runInTransaction, type Tx } from "./tx";
 
+// Shared by every service whose command is leader-only (Section 8.3: "The
+// team leader can submit a team bid, trade request, build request, scout
+// report, and city bid") — checked inside the same transaction as the
+// mutation itself, against team_members, never against anything the
+// client asserts about its own role.
+export async function assertTeamLeaderTx(tx: Tx, eventId: string, teamId: string, participantId: string) {
+  const [membership] = await tx
+    .select({ role: teamMembers.role, teamId: teamMembers.teamId })
+    .from(teamMembers)
+    .where(and(eq(teamMembers.eventId, eventId), eq(teamMembers.participantId, participantId)));
+  if (!membership || membership.teamId !== teamId || membership.role !== "leader") {
+    throw new GameError("forbidden", "Only the team leader may do this for their team.");
+  }
+}
+
+// For moderator-only commands (round/lot control, trade register/reject/
+// complete, void building, resolve inspection). Section 4: "all rules are
+// evaluated server-side" — this is enforced inside the engine function
+// itself, not only by the API route that happens to call it, so a future
+// second caller (an admin script, a different surface) can't skip it by
+// forgetting to re-check.
+export async function assertStaffTx(tx: Tx, eventId: string, participantId: string) {
+  const [staffRow] = await tx
+    .select({ role: eventStaff.role })
+    .from(eventStaff)
+    .where(and(eq(eventStaff.eventId, eventId), eq(eventStaff.participantId, participantId)));
+  if (!staffRow) throw new GameError("forbidden", "Only event moderators can do this.");
+}
+
+// Same idea, but for the handful of commands (construction — Section 8.1:
+// "Team leader/moderator, according to selected workflow") that the
+// rulebook's own real-world process lets either side submit.
+export async function assertTeamLeaderOrStaffTx(tx: Tx, eventId: string, teamId: string, participantId: string) {
+  const [staffRow] = await tx
+    .select({ role: eventStaff.role })
+    .from(eventStaff)
+    .where(and(eq(eventStaff.eventId, eventId), eq(eventStaff.participantId, participantId)));
+  if (staffRow) return;
+  await assertTeamLeaderTx(tx, eventId, teamId, participantId);
+}
+
 function randomTeamCode(): string {
   // Short, spoken-aloud-friendly code for the "join by code" flow — same
   // idea as the legacy repo's randomUUID().slice(0, 6), but restricted to
