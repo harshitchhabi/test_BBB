@@ -8,9 +8,11 @@ pattern, Next.js/Drizzle conventions, and folder layout are being reused
 where they fit; its game-state model is being replaced per the plan's
 Section 3 gap assessment).
 
-Status: **Phase 3 complete** (see `docs/phase-0.md` through
-`docs/phase-3.md`). Phase 4 (Stage 3: city auction, scout reports, hidden
-multipliers, scoring/tiebreakers) not yet started.
+Status: **Phase 4 complete** (see `docs/phase-0.md` through
+`docs/phase-4.md`). Phase 5 (event rehearsal and operational hardening)
+not yet started. The full game loop — Stage 1 auction through Stage 3
+scoring — is implemented and tested end to end; the remaining gap before a
+live event is Stage 2/3 UI screens and Phase 5's hardening pass.
 
 ## Layout
 

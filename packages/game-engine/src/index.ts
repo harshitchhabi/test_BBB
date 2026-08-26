@@ -10,3 +10,6 @@ export * from "./trade-service";
 export * from "./bank-service";
 export * from "./building-service";
 export * from "./inspection-service";
+export * from "./city-service"; // includes closeExpiredCityAuctions
+export * from "./scout-report-service";
+export * from "./scoring-service";

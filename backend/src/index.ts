@@ -19,7 +19,7 @@ import "dotenv/config";
 import { createServer, type IncomingMessage } from "node:http";
 import { WebSocketServer, WebSocket } from "ws";
 import type { WsBroadcastEnvelope } from "common";
-import { closeExpiredLots } from "game-engine";
+import { closeExpiredLots, closeExpiredCityAuctions } from "game-engine";
 
 const PORT = Number(process.env.PORT ?? 8080);
 const INTERNAL_BROADCAST_SECRET = process.env.INTERNAL_BROADCAST_SECRET;
@@ -137,7 +137,8 @@ if (ENABLE_TIMER_SWEEP) {
     console.warn("⚠️  ENABLE_TIMER_SWEEP is on but DATABASE_URL is not set — the sweep will error every tick.");
   }
   sweepTimer = setInterval(() => {
-    closeExpiredLots().catch((err) => console.error("Timer sweep failed:", err));
+    closeExpiredLots().catch((err) => console.error("Timer sweep failed (auction lots):", err));
+    closeExpiredCityAuctions().catch((err) => console.error("Timer sweep failed (city auctions):", err));
   }, TIMER_SWEEP_INTERVAL_MS);
   console.log(`Timer sweep running every ${TIMER_SWEEP_INTERVAL_MS}ms.`);
 } else {
