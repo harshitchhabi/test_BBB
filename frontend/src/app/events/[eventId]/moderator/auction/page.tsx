@@ -18,6 +18,7 @@ export default function ModeratorAuctionPage({ params }: { params: Promise<{ eve
   const { status } = useSession();
   const [state, setState] = useState<AuctionStateResponse | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [materials, setMaterials] = useState<Array<{ materialTypeId: string; materialName: string }>>([]);
   const [materialTypeId, setMaterialTypeId] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -34,8 +35,19 @@ export default function ModeratorAuctionPage({ params }: { params: Promise<{ eve
   }, [eventId]);
 
   useEffect(() => {
-    if (status === "authenticated") refresh();
-  }, [status, refresh]);
+    if (status === "authenticated") {
+      refresh();
+      // bank-stock lists every material regardless of stage/stock level
+      // (a left join that still returns every material_types row) — it's
+      // the cheapest existing endpoint that already has {materialTypeId,
+      // materialName}, so it doubles as the round picker's material list
+      // instead of asking the moderator to paste in a raw UUID.
+      fetch(`/api/events/${eventId}/bank-stock`)
+        .then((r) => r.json())
+        .then((d) => setMaterials(d.stock ?? []))
+        .catch(() => {});
+    }
+  }, [status, eventId, refresh]);
 
   const { connected } = useEventSocket(status === "authenticated" ? eventId : null, () => refresh());
   useEffect(() => {
@@ -68,13 +80,19 @@ export default function ModeratorAuctionPage({ params }: { params: Promise<{ eve
 
       <Panel className="w-full max-w-2xl mb-4">
         <PanelTitle>START A ROUND</PanelTitle>
-        <p className="text-white/70 text-sm mb-2">Enter the material type ID to auction next.</p>
+        <p className="text-white/70 text-sm mb-2">Pick the next material to auction.</p>
         <div className="flex gap-2">
-          <input value={materialTypeId} onChange={(e) => setMaterialTypeId(e.target.value)} placeholder="material type id" className="flex-1 px-3 py-2 rounded text-black" />
+          <select value={materialTypeId} onChange={(e) => setMaterialTypeId(e.target.value)} className="flex-1 px-3 py-2 rounded text-black">
+            <option value="">Choose a material…</option>
+            {materials.map((m) => (
+              <option key={m.materialTypeId} value={m.materialTypeId}>{m.materialName}</option>
+            ))}
+          </select>
           <WoodButton variant="primary" disabled={busy || !materialTypeId} onClick={() => call(`/api/events/${eventId}/auction-rounds`, { materialTypeId })}>
             Start round
           </WoodButton>
         </div>
+        {materials.length === 0 && <p className="text-yellow-300 text-sm mt-2">No materials found — has the event been seeded?</p>}
       </Panel>
 
       {state.activeRound && (

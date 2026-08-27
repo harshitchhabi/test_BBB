@@ -54,7 +54,13 @@ export default function ModeratorCitiesPage({ params }: { params: Promise<{ even
   if (!overview) return <PageFrame><p className="text-[#F1EBB5]">Loading…</p></PageFrame>;
 
   const liveAuctionByCity = new Map(auctions.filter((a) => a.status === "live").map((a) => [a.cityId, a]));
-  const teamsWithoutCity = overview.teams.filter((t: any) => !cities.some((c: any) => c.assignedTeamId === t.id));
+  // Only active teams count toward "is exactly one team left without a
+  // city" — a withdrawn/disqualified team that never won one would
+  // otherwise permanently inflate this count and hide the "assign last
+  // city" button even when the remaining active teams have genuinely
+  // reached that point (scoring-service.ts's revealCitiesAndScore applies
+  // this same active-only filter when it checks the same condition).
+  const teamsWithoutCity = overview.teams.filter((t: any) => t.status === "active" && !cities.some((c: any) => c.assignedTeamId === t.id));
 
   return (
     <PageFrame>
