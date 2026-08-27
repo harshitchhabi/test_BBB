@@ -15,13 +15,20 @@ export default function EventHomePage({ params }: { params: Promise<{ eventId: s
   const { eventId } = use(params);
   const { status } = useSession();
   const [overview, setOverview] = useState<any>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [teamName, setTeamName] = useState("");
   const [joinCode, setJoinCode] = useState("");
   const [message, setMessage] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     const res = await fetch(`/api/events/${eventId}/overview`);
-    if (res.ok) setOverview(await res.json());
+    const body = await res.json().catch(() => null);
+    if (res.ok) {
+      setOverview(body);
+      setLoadError(null);
+    } else {
+      setLoadError(body?.message ?? `Couldn't load this event (${res.status}). Double-check the event id.`);
+    }
   }, [eventId]);
 
   useEffect(() => {
@@ -55,6 +62,13 @@ export default function EventHomePage({ params }: { params: Promise<{ eventId: s
       <PageFrame>
         <HeaderBanner>BRICKS BY BID</HeaderBanner>
         <WoodButton variant="primary" onClick={() => signIn("google")}>Sign in with Google</WoodButton>
+      </PageFrame>
+    );
+  }
+  if (loadError) {
+    return (
+      <PageFrame>
+        <p className="text-red-300 text-center mt-8">{loadError}</p>
       </PageFrame>
     );
   }

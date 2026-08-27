@@ -17,13 +17,20 @@ export default function ModeratorAuctionPage({ params }: { params: Promise<{ eve
   const { eventId } = use(params);
   const { status } = useSession();
   const [state, setState] = useState<AuctionStateResponse | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [materialTypeId, setMaterialTypeId] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const refresh = useCallback(async () => {
     const res = await fetch(`/api/events/${eventId}/auction-state`);
-    if (res.ok) setState(await res.json());
+    const body = await res.json().catch(() => null);
+    if (res.ok) {
+      setState(body);
+      setLoadError(null);
+    } else {
+      setLoadError(body?.message ?? `Couldn't load the auction (${res.status}).`);
+    }
   }, [eventId]);
 
   useEffect(() => {
@@ -49,6 +56,7 @@ export default function ModeratorAuctionPage({ params }: { params: Promise<{ eve
   }
 
   if (status !== "authenticated") return <PageFrame><p className="text-[#F1EBB5]">Sign in as a moderator.</p></PageFrame>;
+  if (loadError) return <PageFrame><ModNav eventId={eventId} /><p className="text-red-300 text-center mt-8">{loadError}</p></PageFrame>;
   if (!state) return <PageFrame><p className="text-[#F1EBB5]">Loading…</p></PageFrame>;
   if (!state.isStaff) return <PageFrame><ModNav eventId={eventId} /><p className="text-[#F1EBB5]">You are not staff for this event.</p></PageFrame>;
 

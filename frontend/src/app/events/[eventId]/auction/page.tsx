@@ -20,13 +20,23 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ eventId:
   const { eventId } = use(params);
   const { status } = useSession();
   const [state, setState] = useState<AuctionStateResponse | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [bidAmount, setBidAmount] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   const refresh = useCallback(async () => {
     const res = await fetch(`/api/events/${eventId}/auction-state`);
-    if (res.ok) setState(await res.json());
+    const body = await res.json().catch(() => null);
+    if (res.ok) {
+      setState(body);
+      setLoadError(null);
+    } else {
+      // Previously this just silently did nothing on a non-200 — e.g. a
+      // 403 for someone who hasn't joined a team yet left the screen
+      // stuck on "Loading auction state…" forever with no explanation.
+      setLoadError(body?.message ?? `Couldn't load the auction (${res.status}).`);
+    }
   }, [eventId]);
 
   useEffect(() => {
@@ -61,6 +71,14 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ eventId:
 
   if (status === "loading") return <PageFrame><p className="text-[#F1EBB5]">Loading…</p></PageFrame>;
   if (status === "unauthenticated") return <PageFrame><p className="text-[#F1EBB5]">Sign in to view the auction.</p></PageFrame>;
+  if (loadError) {
+    return (
+      <PageFrame>
+        <TeamNav eventId={eventId} />
+        <p className="text-red-300 text-center mt-8">{loadError}</p>
+      </PageFrame>
+    );
+  }
   if (!state) return <PageFrame><p className="text-[#F1EBB5]">Loading auction state…</p></PageFrame>;
 
   const myTeam = state.teams.find((t) => t.id === state.myTeamId);
