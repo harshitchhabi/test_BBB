@@ -3,9 +3,10 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-// Section 7.8 moderator console navigation. Score & Reveal lives inside
-// the Cities screen (revealCitiesAndScore is one atomic action, not a
-// separate step — see docs/phase-4.md) rather than getting its own link.
+// Section 7.8 moderator console navigation, same wood/gold theme as the
+// team portal's nav. Score & Reveal lives inside the Cities screen
+// (revealCitiesAndScore is one atomic action, not a separate step — see
+// docs/phase-4.md) rather than getting its own link.
 export function ModNav({ eventId }: { eventId: string }) {
   const pathname = usePathname();
   const links = [
@@ -18,9 +19,15 @@ export function ModNav({ eventId }: { eventId: string }) {
     { href: `/events/${eventId}/moderator/exports`, label: "Exports" },
   ];
   return (
-    <nav style={{ display: "flex", gap: "1rem", flexWrap: "wrap", marginBottom: "1.5rem", borderBottom: "1px solid #ccc", paddingBottom: "0.75rem" }}>
+    <nav className="w-full flex flex-wrap justify-center gap-2 mb-4 minecraft-font">
       {links.map((l) => (
-        <Link key={l.href} href={l.href} style={{ fontWeight: pathname === l.href ? 700 : 400, textDecoration: pathname === l.href ? "underline" : "none" }}>
+        <Link
+          key={l.href}
+          href={l.href}
+          className={`px-3 py-1.5 rounded text-sm md:text-base shadow ${
+            pathname === l.href ? "bg-[#F1EBB5] text-[#4e3016] font-bold" : "bg-[#463d36] text-[#F1EBB5] hover:bg-[#62574e]"
+          }`}
+        >
           {l.label}
         </Link>
       ))}

@@ -4,6 +4,9 @@ import { use, useCallback, useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useEventSocket } from "@/lib/use-event-socket";
 import { ModNav } from "../mod-nav";
+import { PageFrame } from "@/components/theme/PageFrame";
+import { HeaderBanner } from "@/components/theme/HeaderBanner";
+import { Panel, WoodButton } from "@/components/theme/Panel";
 
 // Section 7.9 "Teams & Balances" + "Incidents" (team withdrawal, balance
 // adjustment, manual correction) combined into one screen.
@@ -14,7 +17,6 @@ export default function ModeratorTeamsPage({ params }: { params: Promise<{ event
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [adjustAmount, setAdjustAmount] = useState<Record<string, string>>({});
-  const [reason, setReason] = useState<Record<string, string>>({});
 
   const refresh = useCallback(async () => {
     const ov = await fetch(`/api/events/${eventId}/overview`).then((r) => r.json());
@@ -42,74 +44,54 @@ export default function ModeratorTeamsPage({ params }: { params: Promise<{ event
     }
   }
 
-  if (!overview) return <main style={{ padding: "2rem" }}>Loading…</main>;
+  if (!overview) return <PageFrame><p className="text-[#F1EBB5]">Loading…</p></PageFrame>;
 
   return (
-    <main style={{ padding: "2rem", fontFamily: "system-ui", maxWidth: 1000 }}>
+    <PageFrame>
       <ModNav eventId={eventId} />
-      <h1>Teams & Incidents</h1>
-      {message && <p style={{ color: "crimson" }}>{message}</p>}
+      <HeaderBanner>TEAMS & INCIDENTS</HeaderBanner>
+      {message && <p className="text-red-300 mb-3">{message}</p>}
 
-      <table style={{ width: "100%", borderCollapse: "collapse" }}>
-        <thead>
-          <tr>
-            <th style={{ textAlign: "left" }}>Team</th>
-            <th style={{ textAlign: "right" }}>Auction tokens</th>
-            <th style={{ textAlign: "right" }}>City wallet</th>
-            <th>Trades</th>
-            <th>Status</th>
-            <th>Adjust</th>
-            <th>Incident</th>
-          </tr>
-        </thead>
-        <tbody>
+      <Panel className="w-full">
+        <div className="space-y-2">
           {overview.teams.map((t: any) => (
-            <tr key={t.id}>
-              <td>{t.name} ({t.code})</td>
-              <td style={{ textAlign: "right" }}>{t.auctionTokens}</td>
-              <td style={{ textAlign: "right" }}>{t.cityWalletTokens}</td>
-              <td style={{ textAlign: "center" }}>{t.tradeCount}</td>
-              <td>{t.status}</td>
-              <td>
+            <div key={t.id} className="bg-[#764A21]/40 rounded-lg p-3 text-white flex flex-wrap gap-3 items-center justify-between">
+              <div>
+                <strong>{t.name}</strong> ({t.code}) — {t.status}
+                <div className="text-sm text-white/80">
+                  Tokens: {t.auctionTokens} · Wallet: {t.cityWalletTokens} · Trades: {t.tradeCount}
+                </div>
+              </div>
+              <div className="flex gap-2 items-center flex-wrap">
                 <input
-                  style={{ width: 70 }}
+                  className="w-20 px-2 py-1 rounded text-black text-sm"
                   placeholder="±tokens"
                   value={adjustAmount[t.id] ?? ""}
                   onChange={(e) => setAdjustAmount((a) => ({ ...a, [t.id]: e.target.value }))}
                 />
-                <button
+                <WoodButton
                   disabled={busy || !adjustAmount[t.id]}
-                  onClick={() =>
-                    call(`/api/events/${eventId}/teams/${t.id}/adjust-tokens`, {
-                      auctionTokensDelta: Number(adjustAmount[t.id]),
-                      reason: reason[t.id] || "Manual correction.",
-                    })
-                  }
+                  onClick={() => call(`/api/events/${eventId}/teams/${t.id}/adjust-tokens`, { auctionTokensDelta: Number(adjustAmount[t.id]), reason: "Manual correction." })}
                 >
                   Apply
-                </button>
-              </td>
-              <td>
+                </WoodButton>
                 {t.status === "active" ? (
                   <>
-                    <button disabled={busy} onClick={() => call(`/api/events/${eventId}/teams/${t.id}/status`, { status: "withdrawn", reason: "Team withdrew." })}>Withdraw</button>
-                    <button disabled={busy} onClick={() => call(`/api/events/${eventId}/teams/${t.id}/status`, { status: "disqualified", reason: "Disqualified by moderator." })}>Disqualify</button>
+                    <WoodButton disabled={busy} onClick={() => call(`/api/events/${eventId}/teams/${t.id}/status`, { status: "withdrawn", reason: "Team withdrew." })}>Withdraw</WoodButton>
+                    <WoodButton variant="danger" disabled={busy} onClick={() => call(`/api/events/${eventId}/teams/${t.id}/status`, { status: "disqualified", reason: "Disqualified by moderator." })}>
+                      Disqualify
+                    </WoodButton>
                   </>
                 ) : (
-                  <button disabled={busy} onClick={() => call(`/api/events/${eventId}/teams/${t.id}/status`, { status: "active", reason: "Reinstated." })}>Reinstate</button>
+                  <WoodButton variant="primary" disabled={busy} onClick={() => call(`/api/events/${eventId}/teams/${t.id}/status`, { status: "active", reason: "Reinstated." })}>
+                    Reinstate
+                  </WoodButton>
                 )}
-              </td>
-            </tr>
+              </div>
+            </div>
           ))}
-        </tbody>
-      </table>
-      <p style={{ marginTop: "1rem" }}>
-        <input
-          placeholder="Reason for adjustments/incidents (shared field for this session)"
-          style={{ width: 400 }}
-          onChange={(e) => setReason((r) => Object.fromEntries(overview.teams.map((t: any) => [t.id, e.target.value])))}
-        />
-      </p>
-    </main>
+        </div>
+      </Panel>
+    </PageFrame>
   );
 }

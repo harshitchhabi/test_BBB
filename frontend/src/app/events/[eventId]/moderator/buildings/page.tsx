@@ -4,6 +4,9 @@ import { use, useCallback, useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useEventSocket } from "@/lib/use-event-socket";
 import { ModNav } from "../mod-nav";
+import { PageFrame } from "@/components/theme/PageFrame";
+import { HeaderBanner } from "@/components/theme/HeaderBanner";
+import { Panel, PanelTitle, WoodButton } from "@/components/theme/Panel";
 
 // Section 7.9 Build desk controls: verify recipe, void deed, resolve
 // inspection.
@@ -44,57 +47,45 @@ export default function ModeratorBuildingsPage({ params }: { params: Promise<{ e
   }
 
   return (
-    <main style={{ padding: "2rem", fontFamily: "system-ui", maxWidth: 900 }}>
+    <PageFrame>
       <ModNav eventId={eventId} />
-      <h1>Build / Deed Desk</h1>
-      {message && <p style={{ color: "crimson" }}>{message}</p>}
+      <HeaderBanner>BUILD / DEED DESK</HeaderBanner>
+      {message && <p className="text-red-300 mb-3">{message}</p>}
 
-      <h2>Constructed buildings</h2>
-      <table style={{ width: "100%", borderCollapse: "collapse" }}>
-        <thead>
-          <tr><th style={{ textAlign: "left" }}>Deed</th><th>Team</th><th>Building</th><th style={{ textAlign: "right" }}>Points</th><th>Status</th><th></th></tr>
-        </thead>
-        <tbody>
+      <Panel className="w-full mb-4">
+        <PanelTitle>CONSTRUCTED BUILDINGS</PanelTitle>
+        <div className="space-y-2">
           {buildings.map((b) => (
-            <tr key={b.id}>
-              <td>{b.deedNumber}</td>
-              <td>{b.teamName}</td>
-              <td>{b.recipeName}</td>
-              <td style={{ textAlign: "right" }}>{b.basePoints + b.ecoBonus + b.luxuryBonus + b.landmarkBonus}</td>
-              <td>{b.status}</td>
-              <td>
-                {b.status === "approved" && (
-                  <button disabled={busy} onClick={() => call(`/api/events/${eventId}/buildings/${b.id}/void`, { reason: "Voided by moderator." })}>Void</button>
-                )}
-              </td>
-            </tr>
+            <div key={b.id} className="bg-[#764A21]/40 rounded-lg p-3 flex justify-between items-center text-white">
+              <span>{b.deedNumber} — {b.teamName} — {b.recipeName}</span>
+              <span>{b.basePoints + b.ecoBonus + b.luxuryBonus + b.landmarkBonus} pts ({b.status})</span>
+              {b.status === "approved" && (
+                <WoodButton variant="danger" disabled={busy} onClick={() => call(`/api/events/${eventId}/buildings/${b.id}/void`, { reason: "Voided by moderator." })}>
+                  Void
+                </WoodButton>
+              )}
+            </div>
           ))}
-        </tbody>
-      </table>
+        </div>
+      </Panel>
 
-      <h2 style={{ marginTop: "2rem" }}>Inspections</h2>
-      <table style={{ width: "100%", borderCollapse: "collapse" }}>
-        <thead>
-          <tr><th style={{ textAlign: "left" }}>Challenger</th><th>Target</th><th>Result</th><th></th></tr>
-        </thead>
-        <tbody>
+      <Panel className="w-full">
+        <PanelTitle>INSPECTIONS</PanelTitle>
+        <div className="space-y-2">
           {inspections.map((i) => (
-            <tr key={i.id}>
-              <td>{i.challengerTeamName}</td>
-              <td>{i.targetTeamName} — {i.targetBuilding?.deedNumber}</td>
-              <td>{i.result}</td>
-              <td>
-                {i.result === "cancelled" && (
-                  <>
-                    <button disabled={busy} onClick={() => call(`/api/events/${eventId}/inspections/${i.id}/resolve`, { result: "passed" })}>Pass</button>
-                    <button disabled={busy} onClick={() => call(`/api/events/${eventId}/inspections/${i.id}/resolve`, { result: "failed" })}>Fail</button>
-                  </>
-                )}
-              </td>
-            </tr>
+            <div key={i.id} className="bg-[#764A21]/40 rounded-lg p-3 flex justify-between items-center text-white">
+              <span>{i.challengerTeamName} → {i.targetTeamName} ({i.targetBuilding?.deedNumber})</span>
+              <span>{i.result}</span>
+              {i.result === "cancelled" && (
+                <div className="flex gap-2">
+                  <WoodButton variant="primary" disabled={busy} onClick={() => call(`/api/events/${eventId}/inspections/${i.id}/resolve`, { result: "passed" })}>Pass</WoodButton>
+                  <WoodButton variant="danger" disabled={busy} onClick={() => call(`/api/events/${eventId}/inspections/${i.id}/resolve`, { result: "failed" })}>Fail</WoodButton>
+                </div>
+              )}
+            </div>
           ))}
-        </tbody>
-      </table>
-    </main>
+        </div>
+      </Panel>
+    </PageFrame>
   );
 }

@@ -3,8 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-// Section 7.1 team portal navigation: Event Home, Live Auction, Inventory,
-// Trade & Build, City Auction, Portfolio & Score, Rules.
+// Section 7.1 team portal navigation, restyled to the legacy's wood/gold
+// theme instead of a plain browser nav bar.
 export function TeamNav({ eventId }: { eventId: string }) {
   const pathname = usePathname();
   const links = [
@@ -17,9 +17,15 @@ export function TeamNav({ eventId }: { eventId: string }) {
     { href: `/events/${eventId}/rules`, label: "Rules" },
   ];
   return (
-    <nav style={{ display: "flex", gap: "1rem", flexWrap: "wrap", marginBottom: "1.5rem", borderBottom: "1px solid #ccc", paddingBottom: "0.75rem" }}>
+    <nav className="w-full flex flex-wrap justify-center gap-2 mb-4 minecraft-font">
       {links.map((l) => (
-        <Link key={l.href} href={l.href} style={{ fontWeight: pathname === l.href ? 700 : 400, textDecoration: pathname === l.href ? "underline" : "none" }}>
+        <Link
+          key={l.href}
+          href={l.href}
+          className={`px-3 py-1.5 rounded text-sm md:text-base shadow ${
+            pathname === l.href ? "bg-[#F1EBB5] text-[#4e3016] font-bold" : "bg-[#463d36] text-[#F1EBB5] hover:bg-[#62574e]"
+          }`}
+        >
           {l.label}
         </Link>
       ))}

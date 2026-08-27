@@ -4,16 +4,15 @@ import { use, useCallback, useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useEventSocket } from "@/lib/use-event-socket";
 import { TeamNav } from "../team-nav";
+import { PageFrame } from "@/components/theme/PageFrame";
+import { HeaderBanner } from "@/components/theme/HeaderBanner";
+import { Panel, PanelTitle, WoodButton } from "@/components/theme/Panel";
 
 // Section 7.5 Trade & Build screen. Trade desk: trades remaining,
 // create/receive offer, registered trade status, trade history. Build
 // desk: recipe cards, "can build now" filter, missing material list,
-// construct. Constructed buildings / deeds / bonuses / base score at the
-// bottom. Registering/completing a trade and voiding a building stay
-// moderator-only actions (Section 7.5: "Use moderator approval for
-// binding registered trades... support the moderator's real-world
-// process") — this screen only ever proposes and constructs, it never
-// shows those buttons.
+// construct. Registering/completing a trade and voiding a building stay
+// moderator-only actions — this screen only ever proposes and constructs.
 export default function TradeBuildPage({ params }: { params: Promise<{ eventId: string }> }) {
   const { eventId } = use(params);
   const { status } = useSession();
@@ -89,112 +88,127 @@ export default function TradeBuildPage({ params }: { params: Promise<{ eventId: 
     else refresh();
   }
 
-  if (!overview) return <main style={{ padding: "2rem" }}>Loading…</main>;
-  if (!overview.myTeam) return (
-    <main style={{ padding: "2rem" }}>
-      <TeamNav eventId={eventId} />
-      <p>Join a team first.</p>
-    </main>
-  );
+  if (!overview) return <PageFrame><p className="text-[#F1EBB5]">Loading…</p></PageFrame>;
+  if (!overview.myTeam) {
+    return (
+      <PageFrame>
+        <TeamNav eventId={eventId} />
+        <p className="text-[#F1EBB5]">Join a team first.</p>
+      </PageFrame>
+    );
+  }
 
   const otherTeams = overview.teams.filter((t: any) => t.id !== overview.myTeam.id);
 
   return (
-    <main style={{ padding: "2rem", fontFamily: "system-ui", maxWidth: 1000 }}>
+    <PageFrame>
       <TeamNav eventId={eventId} />
-      <h1>Trade & Build</h1>
-      {message && <p style={{ color: "crimson" }}>{message}</p>}
+      <HeaderBanner>TRADE & BUILD</HeaderBanner>
+      {message && <p className="text-red-300 mb-3">{message}</p>}
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "2rem" }}>
-        <section>
-          <h2>Trade desk — {overview.settings.tradeLimit - overview.myTeam.tradeCount} trades remaining</h2>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full">
+        <Panel>
+          <PanelTitle>TRADE DESK — {overview.settings.tradeLimit - overview.myTeam.tradeCount} REMAINING</PanelTitle>
           {overview.myRole === "leader" ? (
-            <div style={{ border: "1px solid #ccc", borderRadius: 8, padding: "1rem", marginBottom: "1rem" }}>
-              <select value={counterpartyTeamId} onChange={(e) => setCounterpartyTeamId(e.target.value)}>
+            <div className="bg-[#764A21]/40 rounded-lg p-4 mb-4">
+              <select value={counterpartyTeamId} onChange={(e) => setCounterpartyTeamId(e.target.value)} className="w-full mb-2 px-2 py-1 rounded text-black">
                 <option value="">Trade with…</option>
                 {otherTeams.map((t: any) => (
                   <option key={t.id} value={t.id}>{t.name}</option>
                 ))}
               </select>
               {tradeLines.map((line, i) => (
-                <div key={i} style={{ display: "flex", gap: 4, marginTop: 4 }}>
-                  <select value={line.fromMe ? "me" : "them"} onChange={(e) => setTradeLines((ls) => ls.map((l, j) => (j === i ? { ...l, fromMe: e.target.value === "me" } : l)))}>
+                <div key={i} className="flex gap-1 mt-2">
+                  <select
+                    value={line.fromMe ? "me" : "them"}
+                    onChange={(e) => setTradeLines((ls) => ls.map((l, j) => (j === i ? { ...l, fromMe: e.target.value === "me" } : l)))}
+                    className="rounded px-1 text-black text-sm"
+                  >
                     <option value="me">I give</option>
                     <option value="them">They give</option>
                   </select>
-                  <select value={line.materialTypeId} onChange={(e) => setTradeLines((ls) => ls.map((l, j) => (j === i ? { ...l, materialTypeId: e.target.value } : l)))}>
+                  <select
+                    value={line.materialTypeId}
+                    onChange={(e) => setTradeLines((ls) => ls.map((l, j) => (j === i ? { ...l, materialTypeId: e.target.value } : l)))}
+                    className="rounded px-1 text-black text-sm flex-1"
+                  >
                     <option value="">material…</option>
                     {bankStock.map((m: any) => (
                       <option key={m.materialTypeId} value={m.materialTypeId}>{m.materialName}</option>
                     ))}
                   </select>
-                  <input type="number" style={{ width: 70 }} value={line.quantity} onChange={(e) => setTradeLines((ls) => ls.map((l, j) => (j === i ? { ...l, quantity: e.target.value } : l)))} />
+                  <input
+                    type="number"
+                    className="w-16 rounded px-1 text-black text-sm"
+                    value={line.quantity}
+                    onChange={(e) => setTradeLines((ls) => ls.map((l, j) => (j === i ? { ...l, quantity: e.target.value } : l)))}
+                  />
                 </div>
               ))}
-              <button onClick={() => setTradeLines((ls) => [...ls, { fromMe: true, materialTypeId: "", quantity: "" }])}>+ line</button>
-              <button onClick={submitTrade} disabled={!counterpartyTeamId} style={{ marginLeft: 8 }}>Propose trade</button>
+              <div className="flex gap-2 mt-3">
+                <WoodButton onClick={() => setTradeLines((ls) => [...ls, { fromMe: true, materialTypeId: "", quantity: "" }])}>+ line</WoodButton>
+                <WoodButton variant="primary" onClick={submitTrade} disabled={!counterpartyTeamId}>Propose trade</WoodButton>
+              </div>
             </div>
           ) : (
-            <p style={{ color: "#666" }}>Only your team leader can propose a trade.</p>
+            <p className="text-[#F1EBB5] mb-4">Only your team leader can propose a trade.</p>
           )}
 
-          <h3>History</h3>
-          <ul>
+          <h3 className="text-yellow-300 font-bold mb-2">History</h3>
+          <div className="space-y-1">
             {myTrades.map((t) => (
-              <li key={t.id}>
+              <div key={t.id} className="bg-[#764A21]/40 rounded px-3 py-2 text-sm text-white">
                 #{t.tradeNumber}: {t.proposerTeamName} ↔ {t.counterpartyTeamName} — <strong>{t.status}</strong>
                 {t.binding ? " (pink slip)" : ""}
-              </li>
-            ))}
-          </ul>
-        </section>
-
-        <section>
-          <h2>Build desk</h2>
-          {recipes.map((r: any) => {
-            const missing = r.requirements.filter((req: any) => (quantityByMaterial.get(req.materialTypeId) ?? 0) < req.requiredQuantity);
-            const canBuild = missing.length === 0;
-            return (
-              <div key={r.id} style={{ border: "1px solid #ccc", borderRadius: 8, padding: "0.75rem", marginBottom: "0.5rem", opacity: canBuild ? 1 : 0.6 }}>
-                <strong>{r.name}</strong> — {r.basePoints} pts
-                <ul style={{ fontSize: "0.85rem" }}>
-                  {r.requirements.map((req: any) => (
-                    <li key={req.materialTypeId} style={{ color: (quantityByMaterial.get(req.materialTypeId) ?? 0) < req.requiredQuantity ? "crimson" : "inherit" }}>
-                      {req.materialName}: {quantityByMaterial.get(req.materialTypeId) ?? 0} / {req.requiredQuantity}
-                    </li>
-                  ))}
-                </ul>
-                {canBuild && (overview.myRole === "leader" || overview.isStaff) && (
-                  <div>
-                    <button onClick={() => construct(r.id, {})}>Construct</button>
-                    <button onClick={() => construct(r.id, { eco: true })} style={{ marginLeft: 4 }}>+ Eco (4 Solar)</button>
-                    <button onClick={() => construct(r.id, { landmark: true })} style={{ marginLeft: 4 }}>+ Landmark (1 Blueprint)</button>
-                  </div>
-                )}
               </div>
-            );
-          })}
-        </section>
+            ))}
+          </div>
+        </Panel>
+
+        <Panel>
+          <PanelTitle>BUILD DESK</PanelTitle>
+          <div className="space-y-2">
+            {recipes.map((r: any) => {
+              const missing = r.requirements.filter((req: any) => (quantityByMaterial.get(req.materialTypeId) ?? 0) < req.requiredQuantity);
+              const canBuild = missing.length === 0;
+              return (
+                <div key={r.id} className={`bg-[#764A21]/40 rounded-lg p-3 ${canBuild ? "" : "opacity-60"}`}>
+                  <div className="flex justify-between text-white">
+                    <strong>{r.name}</strong>
+                    <span>{r.basePoints} pts</span>
+                  </div>
+                  <ul className="text-xs mt-1">
+                    {r.requirements.map((req: any) => (
+                      <li key={req.materialTypeId} className={(quantityByMaterial.get(req.materialTypeId) ?? 0) < req.requiredQuantity ? "text-red-300" : "text-yellow-200"}>
+                        {req.materialName}: {quantityByMaterial.get(req.materialTypeId) ?? 0} / {req.requiredQuantity}
+                      </li>
+                    ))}
+                  </ul>
+                  {canBuild && (overview.myRole === "leader" || overview.isStaff) && (
+                    <div className="flex gap-2 mt-2 flex-wrap">
+                      <WoodButton variant="primary" onClick={() => construct(r.id, {})}>Construct</WoodButton>
+                      <WoodButton onClick={() => construct(r.id, { eco: true })}>+ Eco</WoodButton>
+                      <WoodButton onClick={() => construct(r.id, { landmark: true })}>+ Landmark</WoodButton>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </Panel>
       </div>
 
-      <section style={{ marginTop: "2rem" }}>
-        <h2>Your buildings</h2>
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <thead>
-            <tr><th style={{ textAlign: "left" }}>Deed</th><th style={{ textAlign: "left" }}>Building</th><th style={{ textAlign: "right" }}>Points</th><th>Status</th></tr>
-          </thead>
-          <tbody>
-            {myBuildings.map((b) => (
-              <tr key={b.id}>
-                <td>{b.deedNumber}</td>
-                <td>{b.recipeName}</td>
-                <td style={{ textAlign: "right" }}>{b.basePoints + b.ecoBonus + b.luxuryBonus + b.landmarkBonus}</td>
-                <td>{b.status}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </section>
-    </main>
+      <Panel className="w-full mt-4">
+        <PanelTitle>YOUR BUILDINGS</PanelTitle>
+        <div className="space-y-1">
+          {myBuildings.map((b) => (
+            <div key={b.id} className="bg-[#764A21]/40 rounded px-3 py-2 flex justify-between text-white text-sm">
+              <span>{b.deedNumber} — {b.recipeName}</span>
+              <span>{b.basePoints + b.ecoBonus + b.luxuryBonus + b.landmarkBonus} pts ({b.status})</span>
+            </div>
+          ))}
+        </div>
+      </Panel>
+    </PageFrame>
   );
 }

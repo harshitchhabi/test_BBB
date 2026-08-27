@@ -4,6 +4,9 @@ import { use, useCallback, useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useEventSocket } from "@/lib/use-event-socket";
 import { TeamNav } from "../team-nav";
+import { PageFrame } from "@/components/theme/PageFrame";
+import { HeaderBanner } from "@/components/theme/HeaderBanner";
+import { Panel, PanelTitle, StatTile } from "@/components/theme/Panel";
 
 // Section 7.7 Portfolio and final score screen. Before reveal: approved
 // deeds + bonus points, pre-multiplier score, city name/tier without its
@@ -41,50 +44,67 @@ export default function PortfolioPage({ params }: { params: Promise<{ eventId: s
     if (connected) refresh();
   }, [connected, refresh]);
 
-  if (!overview) return <main style={{ padding: "2rem" }}>Loading…</main>;
-  if (!overview.myTeam) return (
-    <main style={{ padding: "2rem" }}>
-      <TeamNav eventId={eventId} />
-      <p>Join a team first.</p>
-    </main>
-  );
+  if (!overview) return <PageFrame><p className="text-[#F1EBB5]">Loading…</p></PageFrame>;
+  if (!overview.myTeam) {
+    return (
+      <PageFrame>
+        <TeamNav eventId={eventId} />
+        <p className="text-[#F1EBB5]">Join a team first.</p>
+      </PageFrame>
+    );
+  }
 
   return (
-    <main style={{ padding: "2rem", fontFamily: "system-ui", maxWidth: 800 }}>
+    <PageFrame>
       <TeamNav eventId={eventId} />
-      <h1>Portfolio & Score</h1>
+      <HeaderBanner image="/assets/images/cart_page/header.png">PORTFOLIO & SCORE</HeaderBanner>
 
-      <h2>Approved buildings</h2>
-      <ul>
-        {buildings.filter((b) => b.status === "approved").map((b) => (
-          <li key={b.id}>
-            {b.recipeName} — {b.basePoints} pts{b.ecoBonus ? ` +${b.ecoBonus} Eco` : ""}{b.luxuryBonus ? ` +${b.luxuryBonus} Luxury` : ""}{b.landmarkBonus ? ` +${b.landmarkBonus} Landmark` : ""}
-          </li>
-        ))}
-      </ul>
+      <Panel className="w-full max-w-2xl mb-6">
+        <PanelTitle>APPROVED BUILDINGS</PanelTitle>
+        <div className="space-y-1">
+          {buildings.filter((b) => b.status === "approved").map((b) => (
+            <div key={b.id} className="bg-[#764A21]/40 rounded px-3 py-2 text-white text-sm">
+              {b.recipeName} — {b.basePoints} pts
+              {b.ecoBonus ? ` +${b.ecoBonus} Eco` : ""}
+              {b.luxuryBonus ? ` +${b.luxuryBonus} Luxury` : ""}
+              {b.landmarkBonus ? ` +${b.landmarkBonus} Landmark` : ""}
+            </div>
+          ))}
+        </div>
+      </Panel>
 
       {standing ? (
-        <section style={{ border: "2px solid #444", borderRadius: 8, padding: "1rem", marginTop: "1.5rem" }}>
-          <h2>Final score: {standing.finalScore}</h2>
-          <p>Building points: {standing.buildingPoints} · Bonus points: {standing.bonusPoints} · Leftover points: {standing.leftoverPoints}</p>
-          <p>City multiplier: ×{standing.cityMultiplier}</p>
-          <p>Rank: #{standing.rank} (placement #{standing.tiebreakerRank})</p>
-          <details>
-            <summary>Full calculation</summary>
-            <pre>{JSON.stringify(standing.calculationJson, null, 2)}</pre>
+        <Panel className="w-full max-w-2xl border-2 border-[#F1EBB5]/40">
+          <h2 className="text-3xl text-[#FDE047] text-outline-black font-bold text-center mb-4">FINAL SCORE: {standing.finalScore}</h2>
+          <div className="grid grid-cols-3 gap-3 mb-3">
+            <StatTile label="Building" value={standing.buildingPoints} />
+            <StatTile label="Bonus" value={standing.bonusPoints} />
+            <StatTile label="Leftover" value={standing.leftoverPoints} />
+          </div>
+          <p className="text-center text-white mb-2">City multiplier: ×{standing.cityMultiplier}</p>
+          <p className="text-center text-yellow-300 font-bold">Rank #{standing.rank} (placement #{standing.tiebreakerRank})</p>
+          <details className="mt-3 text-white/80 text-sm">
+            <summary className="cursor-pointer">Full calculation</summary>
+            <pre className="whitespace-pre-wrap">{JSON.stringify(standing.calculationJson, null, 2)}</pre>
           </details>
-        </section>
+        </Panel>
       ) : preReveal ? (
-        <section style={{ border: "1px solid #ccc", borderRadius: 8, padding: "1rem", marginTop: "1.5rem" }}>
-          <h2>Pre-reveal score: {preReveal.preMultiplierTotal}</h2>
-          <p>Building points: {preReveal.buildingPoints} · Bonus points: {preReveal.bonusPoints} · Leftover points: {preReveal.leftoverPoints}</p>
+        <Panel className="w-full max-w-2xl">
+          <h2 className="text-2xl text-[#FDE047] text-outline-black font-bold text-center mb-4">PRE-REVEAL SCORE: {preReveal.preMultiplierTotal}</h2>
+          <div className="grid grid-cols-3 gap-3 mb-3">
+            <StatTile label="Building" value={preReveal.buildingPoints} />
+            <StatTile label="Bonus" value={preReveal.bonusPoints} />
+            <StatTile label="Leftover" value={preReveal.leftoverPoints} />
+          </div>
           {preReveal.city ? (
-            <p>Your city: {preReveal.city.name} ({preReveal.city.tier}) — multiplier revealed once every city is sold.</p>
+            <p className="text-center text-[#F1EBB5]">
+              Your city: {preReveal.city.name} ({preReveal.city.tier}) — multiplier revealed once every city is sold.
+            </p>
           ) : (
-            <p style={{ color: "#666" }}>You haven't won a city yet.</p>
+            <p className="text-center text-[#F1EBB5]">You haven't won a city yet.</p>
           )}
-        </section>
+        </Panel>
       ) : null}
-    </main>
+    </PageFrame>
   );
 }

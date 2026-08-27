@@ -4,6 +4,9 @@ import { use, useCallback, useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useEventSocket } from "@/lib/use-event-socket";
 import { TeamNav } from "../team-nav";
+import { PageFrame } from "@/components/theme/PageFrame";
+import { HeaderBanner } from "@/components/theme/HeaderBanner";
+import { Panel, PanelTitle, StatTile, WoodButton } from "@/components/theme/Panel";
 
 // Section 7.6 City Auction screen: city cards (tier/opening bid, hidden
 // multiplier placeholder), wallet/balance, scout-report purchase (own
@@ -68,62 +71,70 @@ export default function CityAuctionPage({ params }: { params: Promise<{ eventId:
     else refresh();
   }
 
-  if (!overview) return <main style={{ padding: "2rem" }}>Loading…</main>;
+  if (!overview) return <PageFrame><p className="text-[#F1EBB5]">Loading…</p></PageFrame>;
 
   const myCity = cities.find((c) => c.assignedTeamId === overview.myTeam?.id);
   const liveAuction = auctions.find((a) => a.status === "live");
   const scoutReportByCity = new Map(scoutReports.map((r) => [r.cityId, r]));
 
   return (
-    <main style={{ padding: "2rem", fontFamily: "system-ui", maxWidth: 900 }}>
+    <PageFrame>
       <TeamNav eventId={eventId} />
-      <h1>City Auction</h1>
-      {message && <p style={{ color: "crimson" }}>{message}</p>}
+      <HeaderBanner>CITY AUCTION</HeaderBanner>
+      {message && <p className="text-red-300 mb-3">{message}</p>}
 
       {overview.myTeam && (
-        <p>
-          Wallet: <strong>{overview.myTeam.cityWalletTokens}</strong> · Leftover: <strong>{overview.myTeam.auctionTokens}</strong>
-          {myCity && <> · Your city: <strong>{myCity.name}</strong> ({myCity.tier})</>}
-        </p>
+        <div className="grid grid-cols-3 gap-3 w-full max-w-lg mb-4">
+          <StatTile label="Wallet" value={overview.myTeam.cityWalletTokens} />
+          <StatTile label="Leftover" value={overview.myTeam.auctionTokens} />
+          <StatTile label="Your city" value={myCity ? myCity.name : "—"} />
+        </div>
       )}
 
       {liveAuction && (
-        <section style={{ border: "2px solid #444", borderRadius: 8, padding: "1rem", marginBottom: "1.5rem" }}>
-          <h2>Live: {liveAuction.city?.name} ({liveAuction.city?.tier})</h2>
-          <p>Opening bid: {liveAuction.openingBid} · Current highest: {liveAuction.currentHighestBid ? `${liveAuction.currentHighestBid.amount} (${liveAuction.currentHighestBid.teamName})` : "none"}</p>
-          {overview.myRole === "leader" && !myCity && (
-            <div>
-              <input type="number" value={bidAmount} onChange={(e) => setBidAmount(e.target.value)} />
-              <button onClick={() => bid(liveAuction.id)} disabled={!bidAmount}>Bid</button>
+        <Panel className="w-full max-w-2xl mb-6 border-2 border-[#F1EBB5]/40">
+          <PanelTitle>
+            LIVE: {liveAuction.city?.name} ({liveAuction.city?.tier})
+          </PanelTitle>
+          <p className="text-white mb-2">
+            Opening bid: ₹{liveAuction.openingBid} · Current highest:{" "}
+            {liveAuction.currentHighestBid ? `₹${liveAuction.currentHighestBid.amount} (${liveAuction.currentHighestBid.teamName})` : "none"}
+          </p>
+          {overview.myRole === "leader" && !myCity ? (
+            <div className="flex gap-2">
+              <input type="number" value={bidAmount} onChange={(e) => setBidAmount(e.target.value)} className="px-3 py-2 rounded text-black flex-1" />
+              <WoodButton variant="primary" onClick={() => bid(liveAuction.id)} disabled={!bidAmount}>Bid</WoodButton>
             </div>
-          )}
-          {myCity && <p style={{ color: "#666" }}>You already won a city — you can't bid again.</p>}
-        </section>
+          ) : myCity ? (
+            <p className="text-[#F1EBB5]">You already won a city — you can't bid again.</p>
+          ) : null}
+        </Panel>
       )}
 
-      <h2>Cities</h2>
-      <table style={{ width: "100%", borderCollapse: "collapse" }}>
-        <thead>
-          <tr><th style={{ textAlign: "left" }}>City</th><th>Tier</th><th style={{ textAlign: "right" }}>Opening bid</th><th>Status</th><th>Scout</th></tr>
-        </thead>
-        <tbody>
+      <Panel className="w-full">
+        <PanelTitle>CITIES</PanelTitle>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {cities.map((c) => (
-            <tr key={c.id}>
-              <td>{c.name}</td>
-              <td style={{ textAlign: "center" }}>{c.tier}</td>
-              <td style={{ textAlign: "right" }}>{c.openingBid}</td>
-              <td style={{ textAlign: "center" }}>{c.assignedTeamId ? "sold" : "available"}</td>
-              <td>
-                {scoutReportByCity.has(c.id) ? (
-                  <span>{scoutReportByCity.get(c.id).clueType === "minimum_multiplier" ? "≥" : "<"} {scoutReportByCity.get(c.id).clueValue}x</span>
-                ) : overview.myRole === "leader" && overview.settings.scoutReportsEnabled && !c.assignedTeamId ? (
-                  <button onClick={() => scout(c.id)}>Scout ({overview.settings.scoutReportCost})</button>
-                ) : null}
-              </td>
-            </tr>
+            <div key={c.id} className="bg-[#764A21]/40 rounded-lg p-3 text-white">
+              <div className="flex justify-between font-bold">
+                <span>{c.name}</span>
+                <span className="uppercase text-xs bg-black/30 px-2 py-0.5 rounded">{c.tier}</span>
+              </div>
+              <p className="text-sm text-white/80">Opening bid: ₹{c.openingBid}</p>
+              <p className="text-sm">{c.assignedTeamId ? "sold" : "available"}</p>
+              {scoutReportByCity.has(c.id) ? (
+                <p className="text-yellow-300 text-sm mt-1">
+                  {scoutReportByCity.get(c.id).clueType === "minimum_multiplier" ? "≥" : "<"} {scoutReportByCity.get(c.id).clueValue}x
+                </p>
+              ) : overview.myRole === "leader" && overview.settings.scoutReportsEnabled && !c.assignedTeamId ? (
+                <WoodButton className="mt-2 text-xs px-2 py-1" onClick={() => scout(c.id)}>
+                  Scout ({overview.settings.scoutReportCost})
+                </WoodButton>
+              ) : null}
+            </div>
           ))}
-        </tbody>
-      </table>
-    </main>
+        </div>
+      </Panel>
+    </PageFrame>
   );
 }

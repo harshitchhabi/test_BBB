@@ -5,13 +5,14 @@ import { useSession } from "next-auth/react";
 import { useEventSocket } from "@/lib/use-event-socket";
 import type { AuctionStateResponse } from "@/lib/auction-state-types";
 import { ModNav } from "../mod-nav";
+import { PageFrame } from "@/components/theme/PageFrame";
+import { HeaderBanner } from "@/components/theme/HeaderBanner";
+import { Panel, PanelTitle, WoodButton } from "@/components/theme/Panel";
 
-// Section 7.8/7.9 moderator console — Stage 1 Auction Control slice only
-// (start round, open next lot, close lot). Every button here calls the
-// same command endpoints a script or a future automated test would; this
-// page has no authority of its own — the server re-checks staff status on
-// every request regardless of whether this page would have shown the
-// button.
+// Section 7.8/7.9 moderator console — Stage 1 Auction Control slice.
+// Every button here calls the same command endpoints a script or a
+// future automated test would; this page has no authority of its own —
+// the server re-checks staff status on every request.
 export default function ModeratorAuctionPage({ params }: { params: Promise<{ eventId: string }> }) {
   const { eventId } = use(params);
   const { status } = useSession();
@@ -30,9 +31,6 @@ export default function ModeratorAuctionPage({ params }: { params: Promise<{ eve
   }, [status, refresh]);
 
   const { connected } = useEventSocket(status === "authenticated" ? eventId : null, () => refresh());
-
-  // Same reconnect-refetch fix as the team Live Auction screen — don't
-  // rely on a broadcast happening to arrive after the socket comes back.
   useEffect(() => {
     if (connected) refresh();
   }, [connected, refresh]);
@@ -50,69 +48,66 @@ export default function ModeratorAuctionPage({ params }: { params: Promise<{ eve
     }
   }
 
-  if (status !== "authenticated") return <main style={{ padding: "2rem" }}>Sign in as a moderator.</main>;
-  if (!state) return <main style={{ padding: "2rem" }}>Loading…</main>;
-  if (!state.isStaff) return <main style={{ padding: "2rem" }}>You are not staff for this event.</main>;
+  if (status !== "authenticated") return <PageFrame><p className="text-[#F1EBB5]">Sign in as a moderator.</p></PageFrame>;
+  if (!state) return <PageFrame><p className="text-[#F1EBB5]">Loading…</p></PageFrame>;
+  if (!state.isStaff) return <PageFrame><ModNav eventId={eventId} /><p className="text-[#F1EBB5]">You are not staff for this event.</p></PageFrame>;
 
   return (
-    <main style={{ padding: "2rem", fontFamily: "system-ui", maxWidth: 800 }}>
+    <PageFrame>
       <ModNav eventId={eventId} />
-      <h1>Stage 1 Auction Control</h1>
+      <HeaderBanner>STAGE 1 AUCTION CONTROL</HeaderBanner>
+      {message && <p className="text-red-300 mb-3">{message}</p>}
 
-      <section style={{ marginBottom: "1.5rem" }}>
-        <h2>Start a round</h2>
-        <p style={{ color: "#666" }}>
-          Enter the material type ID to auction next (moderator setup screens for browsing materials land alongside Phase
-          3's build desk).
-        </p>
-        <input value={materialTypeId} onChange={(e) => setMaterialTypeId(e.target.value)} placeholder="material type id" style={{ width: 320 }} />
-        <button disabled={busy || !materialTypeId} onClick={() => call(`/api/events/${eventId}/auction-rounds`, { materialTypeId })}>
-          Start round
-        </button>
-      </section>
+      <Panel className="w-full max-w-2xl mb-4">
+        <PanelTitle>START A ROUND</PanelTitle>
+        <p className="text-white/70 text-sm mb-2">Enter the material type ID to auction next.</p>
+        <div className="flex gap-2">
+          <input value={materialTypeId} onChange={(e) => setMaterialTypeId(e.target.value)} placeholder="material type id" className="flex-1 px-3 py-2 rounded text-black" />
+          <WoodButton variant="primary" disabled={busy || !materialTypeId} onClick={() => call(`/api/events/${eventId}/auction-rounds`, { materialTypeId })}>
+            Start round
+          </WoodButton>
+        </div>
+      </Panel>
 
       {state.activeRound && (
-        <section style={{ marginBottom: "1.5rem" }}>
-          <h2>
-            Round {state.activeRound.sequence}: {state.activeRound.materialName ?? state.activeRound.materialKey}
-          </h2>
+        <Panel className="w-full max-w-2xl mb-4">
+          <PanelTitle>
+            ROUND {state.activeRound.sequence}: {state.activeRound.materialName ?? state.activeRound.materialKey}
+          </PanelTitle>
           {state.activeRound.shock && (
-            <p>
-              ⚡ {state.activeRound.shock.title} — {state.activeRound.shock.description}
-            </p>
+            <p className="text-yellow-300 mb-2">⚡ {state.activeRound.shock.title} — {state.activeRound.shock.description}</p>
           )}
-          <p>{state.pendingLotsCount} lot(s) still pending in this round.</p>
+          <p className="text-white mb-3">{state.pendingLotsCount} lot(s) still pending in this round.</p>
 
           {state.liveLot ? (
-            <div>
-              <p>
+            <div className="bg-[#764A21]/40 rounded-lg p-3">
+              <p className="text-white">
                 Live: lot #{state.liveLot.lotNumber} — opening {state.liveLot.openingBid}, next min {state.liveLot.nextMinimumBid}
               </p>
-              <p>Current highest: {state.liveLot.currentHighestBid ? state.liveLot.currentHighestBid.amount : "none"}</p>
-              <button disabled={busy} onClick={() => call(`/api/events/${eventId}/auction-lots/${state.liveLot!.id}/close`, { reason: "Moderator closed the lot." })}>
+              <p className="text-white/70 text-sm mb-2">Current highest: {state.liveLot.currentHighestBid ? state.liveLot.currentHighestBid.amount : "none"}</p>
+              <WoodButton variant="danger" disabled={busy} onClick={() => call(`/api/events/${eventId}/auction-lots/${state.liveLot!.id}/close`, { reason: "Moderator closed the lot." })}>
                 Close lot
-              </button>
+              </WoodButton>
             </div>
           ) : (
-            <button disabled={busy} onClick={() => call(`/api/events/${eventId}/auction-rounds/${state.activeRound!.id}/open-next-lot`)}>
+            <WoodButton variant="primary" disabled={busy} onClick={() => call(`/api/events/${eventId}/auction-rounds/${state.activeRound!.id}/open-next-lot`)}>
               Open next lot
-            </button>
+            </WoodButton>
           )}
-        </section>
+        </Panel>
       )}
 
-      {message && <p style={{ color: "crimson" }}>{message}</p>}
-
-      <section>
-        <h3>Teams</h3>
-        <ul>
+      <Panel className="w-full max-w-2xl">
+        <PanelTitle>TEAMS</PanelTitle>
+        <div className="space-y-1">
           {state.teams.map((t) => (
-            <li key={t.id}>
-              {t.name}: {t.auctionTokens} tokens ({t.status})
-            </li>
+            <div key={t.id} className="bg-[#764A21]/40 rounded px-3 py-2 flex justify-between text-white text-sm">
+              <span>{t.name}</span>
+              <span>{t.auctionTokens} tokens ({t.status})</span>
+            </div>
           ))}
-        </ul>
-      </section>
-    </main>
+        </div>
+      </Panel>
+    </PageFrame>
   );
 }

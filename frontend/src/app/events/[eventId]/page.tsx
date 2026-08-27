@@ -3,9 +3,14 @@
 import { use, useCallback, useEffect, useState } from "react";
 import { useSession, signIn } from "next-auth/react";
 import { TeamNav } from "./team-nav";
+import { PageFrame } from "@/components/theme/PageFrame";
+import { HeaderBanner } from "@/components/theme/HeaderBanner";
+import { Panel, StatTile, WoodButton } from "@/components/theme/Panel";
 
-// Section 7.2 Team home / event lobby: event title/stage, team info,
-// token summary cards, "waiting for moderator" state when nothing to do.
+// Section 7.2 Team home / event lobby — restyled with the legacy team
+// page's exact visual language: the team/header-bg.png banner and
+// create/join button images from BeforeTeamView, the wooden hanging-sign
+// panel from AfterTeamView once a team exists.
 export default function EventHomePage({ params }: { params: Promise<{ eventId: string }> }) {
   const { eventId } = use(params);
   const { status } = useSession();
@@ -47,63 +52,74 @@ export default function EventHomePage({ params }: { params: Promise<{ eventId: s
 
   if (status === "unauthenticated") {
     return (
-      <main style={{ padding: "2rem", fontFamily: "system-ui" }}>
-        <h1>Bricks by Bid</h1>
-        <button onClick={() => signIn("google")}>Sign in with Google</button>
-      </main>
+      <PageFrame>
+        <HeaderBanner>BRICKS BY BID</HeaderBanner>
+        <WoodButton variant="primary" onClick={() => signIn("google")}>Sign in with Google</WoodButton>
+      </PageFrame>
     );
   }
-  if (status === "loading" || !overview) return <main style={{ padding: "2rem" }}>Loading…</main>;
+  if (status === "loading" || !overview) {
+    return (
+      <PageFrame>
+        <div className="animate-spin h-10 w-10 border-4 border-b-transparent rounded-full border-yellow-300 mt-20" />
+      </PageFrame>
+    );
+  }
 
   const stageOrder = ["setup", "lobby", "stage_1", "stage_2", "stage_3", "scoring", "completed"];
   const currentIndex = stageOrder.indexOf(overview.event.status);
 
   return (
-    <main style={{ padding: "2rem", fontFamily: "system-ui", maxWidth: 800 }}>
+    <PageFrame>
       <TeamNav eventId={eventId} />
-      <h1>{overview.event.name}</h1>
-      <p>
-        Stage: <strong>{overview.event.status}</strong>
-      </p>
+      <HeaderBanner image="/assets/images/team/header-bg.png">{overview.event.name}</HeaderBanner>
 
-      <section style={{ display: "flex", gap: "1rem", margin: "1rem 0" }}>
-        {stageOrder.map((s, i) => (
-          <span key={s} style={{ opacity: i <= currentIndex ? 1 : 0.35, fontWeight: s === overview.event.status ? 700 : 400 }}>
-            {s}
-            {i < stageOrder.length - 1 ? " →" : ""}
-          </span>
-        ))}
-      </section>
+      <Panel className="mb-6">
+        <div className="flex flex-wrap gap-2 justify-center text-[#F1EBB5] text-sm md:text-base">
+          {stageOrder.map((s, i) => (
+            <span key={s} className={i <= currentIndex ? "font-bold" : "opacity-40"}>
+              {s}
+              {i < stageOrder.length - 1 ? " → " : ""}
+            </span>
+          ))}
+        </div>
+      </Panel>
 
       {overview.myTeam ? (
-        <section style={{ border: "1px solid #ccc", borderRadius: 8, padding: "1rem" }}>
-          <h2>Your team: {overview.myTeam.name}</h2>
-          <p>Code: {overview.myTeam.code}</p>
-          <p>Role: {overview.myRole}</p>
-          <div style={{ display: "flex", gap: "1.5rem" }}>
-            <div>Stage 1 tokens: <strong>{overview.myTeam.auctionTokens}</strong></div>
-            <div>City wallet: <strong>{overview.myTeam.cityWalletTokens}</strong></div>
-            <div>Trades used: <strong>{overview.myTeam.tradeCount}</strong></div>
+        <div className="flex flex-col items-center space-y-6 text-center bg-[#5e3c1c] p-6 rounded-xl border-4 border-[#3b2a1a] shadow-lg w-full max-w-md">
+          <div className="bg-[#3b2a1a] text-white px-6 py-4 rounded shadow-inner border-4 border-[#a58d6f] relative w-full">
+            <h2 className="text-2xl font-bold">TEAM {overview.myTeam.name?.toUpperCase()}</h2>
+            <p className="text-yellow-300 font-semibold mt-1">Code: {overview.myTeam.code}</p>
+            <div className="grid grid-cols-3 gap-2 mt-4">
+              <StatTile label="Stage 1" value={overview.myTeam.auctionTokens} />
+              <StatTile label="City Wallet" value={overview.myTeam.cityWalletTokens} />
+              <StatTile label="Trades used" value={overview.myTeam.tradeCount} />
+            </div>
           </div>
-        </section>
+        </div>
       ) : (
-        <section style={{ border: "1px solid #ccc", borderRadius: 8, padding: "1rem" }}>
-          <h2>Join or create a team</h2>
-          <div style={{ marginBottom: "1rem" }}>
-            <input value={teamName} onChange={(e) => setTeamName(e.target.value)} placeholder="Team name" />
-            <button onClick={createTeam} disabled={!teamName}>Create team</button>
+        <Panel className="w-full max-w-lg">
+          <div className="flex justify-center gap-10 mb-6">
+            <button className="cursor-pointer flex flex-col items-center" onClick={createTeam} disabled={!teamName}>
+              <img src="/assets/images/team/create-button.png" alt="Create Team" width={120} height={120} />
+              <span className="text-[#F1EBB5] mt-1">Create</span>
+            </button>
+            <button className="cursor-pointer flex flex-col items-center" onClick={joinTeam} disabled={!joinCode}>
+              <img src="/assets/images/team/join-button.png" alt="Join Team" width={120} height={120} />
+              <span className="text-[#F1EBB5] mt-1">Join</span>
+            </button>
           </div>
-          <div>
-            <input value={joinCode} onChange={(e) => setJoinCode(e.target.value)} placeholder="Join code" />
-            <button onClick={joinTeam} disabled={!joinCode}>Join team</button>
+          <div className="space-y-3">
+            <input value={teamName} onChange={(e) => setTeamName(e.target.value)} placeholder="Team name" className="w-full px-3 py-2 rounded text-black" />
+            <input value={joinCode} onChange={(e) => setJoinCode(e.target.value)} placeholder="Join code" className="w-full px-3 py-2 rounded text-black" />
           </div>
-          {message && <p style={{ color: "crimson" }}>{message}</p>}
-        </section>
+          {message && <p className="text-red-300 mt-3">{message}</p>}
+        </Panel>
       )}
 
-      {overview.event.status === "setup" || overview.event.status === "lobby" ? (
-        <p style={{ marginTop: "1.5rem", color: "#666" }}>Waiting for the moderator to start Stage 1…</p>
-      ) : null}
-    </main>
+      {(overview.event.status === "setup" || overview.event.status === "lobby") && (
+        <p className="mt-6 text-[#F1EBB5]">Waiting for the moderator to start Stage 1…</p>
+      )}
+    </PageFrame>
   );
 }

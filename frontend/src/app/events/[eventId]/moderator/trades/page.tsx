@@ -4,6 +4,9 @@ import { use, useCallback, useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useEventSocket } from "@/lib/use-event-socket";
 import { ModNav } from "../mod-nav";
+import { PageFrame } from "@/components/theme/PageFrame";
+import { HeaderBanner } from "@/components/theme/HeaderBanner";
+import { Panel, WoodButton } from "@/components/theme/Panel";
 
 // Section 7.9 Trade desk controls: register, approve/reject, complete, or
 // cancel trades.
@@ -41,44 +44,42 @@ export default function ModeratorTradesPage({ params }: { params: Promise<{ even
   }
 
   return (
-    <main style={{ padding: "2rem", fontFamily: "system-ui", maxWidth: 900 }}>
+    <PageFrame>
       <ModNav eventId={eventId} />
-      <h1>Trade Desk</h1>
-      {message && <p style={{ color: "crimson" }}>{message}</p>}
+      <HeaderBanner>TRADE DESK</HeaderBanner>
+      {message && <p className="text-red-300 mb-3">{message}</p>}
 
-      <table style={{ width: "100%", borderCollapse: "collapse" }}>
-        <thead>
-          <tr><th style={{ textAlign: "left" }}>#</th><th style={{ textAlign: "left" }}>Teams</th><th>Lines</th><th>Status</th><th>Actions</th></tr>
-        </thead>
-        <tbody>
+      <Panel className="w-full">
+        <div className="space-y-2">
           {trades.map((t) => (
-            <tr key={t.id}>
-              <td>{t.tradeNumber}</td>
-              <td>{t.proposerTeamName} ↔ {t.counterpartyTeamName}</td>
-              <td>
+            <div key={t.id} className="bg-[#764A21]/40 rounded-lg p-3 text-white">
+              <div className="flex justify-between font-bold">
+                <span>#{t.tradeNumber}: {t.proposerTeamName} ↔ {t.counterpartyTeamName}</span>
+                <span>{t.status}{t.binding ? " (pink slip)" : ""}</span>
+              </div>
+              <div className="text-sm text-white/80 mt-1">
                 {t.lines.map((l: any, i: number) => (
                   <div key={i}>{l.fromTeamName} gives {l.quantity} {l.material?.name}</div>
                 ))}
-              </td>
-              <td>{t.status}{t.binding ? " (pink slip)" : ""}</td>
-              <td>
+              </div>
+              <div className="flex gap-2 mt-2 flex-wrap">
                 {t.status === "submitted" && (
                   <>
-                    <button disabled={busy} onClick={() => call(`/api/events/${eventId}/trades/${t.id}/register`)}>Register</button>
-                    <button disabled={busy} onClick={() => call(`/api/events/${eventId}/trades/${t.id}/reject`, { reason: "Rejected by moderator." })}>Reject</button>
+                    <WoodButton variant="primary" disabled={busy} onClick={() => call(`/api/events/${eventId}/trades/${t.id}/register`)}>Register</WoodButton>
+                    <WoodButton variant="danger" disabled={busy} onClick={() => call(`/api/events/${eventId}/trades/${t.id}/reject`, { reason: "Rejected by moderator." })}>Reject</WoodButton>
                   </>
                 )}
                 {t.status === "registered" && (
-                  <button disabled={busy} onClick={() => call(`/api/events/${eventId}/trades/${t.id}/complete`)}>Complete</button>
+                  <WoodButton variant="primary" disabled={busy} onClick={() => call(`/api/events/${eventId}/trades/${t.id}/complete`)}>Complete</WoodButton>
                 )}
                 {(t.status === "submitted" || t.status === "registered") && (
-                  <button disabled={busy} onClick={() => call(`/api/events/${eventId}/trades/${t.id}/cancel`, { reason: "Cancelled by moderator." })}>Cancel</button>
+                  <WoodButton disabled={busy} onClick={() => call(`/api/events/${eventId}/trades/${t.id}/cancel`, { reason: "Cancelled by moderator." })}>Cancel</WoodButton>
                 )}
-              </td>
-            </tr>
+              </div>
+            </div>
           ))}
-        </tbody>
-      </table>
-    </main>
+        </div>
+      </Panel>
+    </PageFrame>
   );
 }

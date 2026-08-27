@@ -4,6 +4,9 @@ import { use, useCallback, useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useEventSocket } from "@/lib/use-event-socket";
 import { ModNav } from "../mod-nav";
+import { PageFrame } from "@/components/theme/PageFrame";
+import { HeaderBanner } from "@/components/theme/HeaderBanner";
+import { Panel, WoodButton } from "@/components/theme/Panel";
 
 // Section 7.9 Stage 3 controls: start city, accept/close bid, assign last
 // city, reveal multipliers. Score & Reveal folds into this screen too —
@@ -48,56 +51,48 @@ export default function ModeratorCitiesPage({ params }: { params: Promise<{ even
     }
   }
 
-  if (!overview) return <main style={{ padding: "2rem" }}>Loading…</main>;
+  if (!overview) return <PageFrame><p className="text-[#F1EBB5]">Loading…</p></PageFrame>;
 
   const liveAuctionByCity = new Map(auctions.filter((a) => a.status === "live").map((a) => [a.cityId, a]));
   const teamsWithoutCity = overview.teams.filter((t: any) => !cities.some((c: any) => c.assignedTeamId === t.id));
 
   return (
-    <main style={{ padding: "2rem", fontFamily: "system-ui", maxWidth: 1000 }}>
+    <PageFrame>
       <ModNav eventId={eventId} />
-      <h1>Stage 3: Cities & Reveal</h1>
-      {message && <p style={{ color: "crimson" }}>{message}</p>}
+      <HeaderBanner>STAGE 3: CITIES & REVEAL</HeaderBanner>
+      {message && <p className="text-red-300 mb-3">{message}</p>}
 
-      <button
-        disabled={busy}
-        onClick={() => call(`/api/events/${eventId}/cities/reveal`)}
-        style={{ background: "#900", color: "white", padding: "0.5rem 1rem", marginBottom: "1rem" }}
-      >
+      <WoodButton variant="danger" disabled={busy} onClick={() => call(`/api/events/${eventId}/cities/reveal`)} className="mb-4 text-lg">
         Reveal all multipliers & finalize scores
-      </button>
+      </WoodButton>
 
-      <table style={{ width: "100%", borderCollapse: "collapse" }}>
-        <thead>
-          <tr><th style={{ textAlign: "left" }}>City</th><th>Tier</th><th>Status</th><th>Winner</th><th></th></tr>
-        </thead>
-        <tbody>
+      <Panel className="w-full">
+        <div className="space-y-2">
           {cities.map((c) => {
             const live = liveAuctionByCity.get(c.id);
             return (
-              <tr key={c.id}>
-                <td>{c.name}</td>
-                <td style={{ textAlign: "center" }}>{c.tier}</td>
-                <td>{c.assignedTeamId ? "sold" : live ? "live" : "unsold"}</td>
-                <td>{c.assignedTeamId ? overview.teams.find((t: any) => t.id === c.assignedTeamId)?.name : "—"}</td>
-                <td>
+              <div key={c.id} className="bg-[#764A21]/40 rounded-lg p-3 flex justify-between items-center text-white flex-wrap gap-2">
+                <span>
+                  {c.name} ({c.tier}) — {c.assignedTeamId ? `sold to ${overview.teams.find((t: any) => t.id === c.assignedTeamId)?.name}` : live ? "live" : "unsold"}
+                </span>
+                <div className="flex gap-2">
                   {!c.assignedTeamId && !live && (
-                    <button disabled={busy} onClick={() => call(`/api/events/${eventId}/cities/${c.id}/start-auction`)}>Start auction</button>
+                    <WoodButton variant="primary" disabled={busy} onClick={() => call(`/api/events/${eventId}/cities/${c.id}/start-auction`)}>Start auction</WoodButton>
                   )}
                   {live && (
-                    <button disabled={busy} onClick={() => call(`/api/events/${eventId}/city-auctions/${live.id}/close`)}>Close</button>
+                    <WoodButton variant="danger" disabled={busy} onClick={() => call(`/api/events/${eventId}/city-auctions/${live.id}/close`)}>Close</WoodButton>
                   )}
                   {!c.assignedTeamId && !live && teamsWithoutCity.length === 1 && (
-                    <button disabled={busy} onClick={() => call(`/api/events/${eventId}/cities/${c.id}/assign-last`, { teamId: teamsWithoutCity[0].id })}>
+                    <WoodButton disabled={busy} onClick={() => call(`/api/events/${eventId}/cities/${c.id}/assign-last`, { teamId: teamsWithoutCity[0].id })}>
                       Assign to {teamsWithoutCity[0].name} (last team)
-                    </button>
+                    </WoodButton>
                   )}
-                </td>
-              </tr>
+                </div>
+              </div>
             );
           })}
-        </tbody>
-      </table>
-    </main>
+        </div>
+      </Panel>
+    </PageFrame>
   );
 }

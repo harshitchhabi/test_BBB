@@ -4,9 +4,12 @@ import { use, useCallback, useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useEventSocket } from "@/lib/use-event-socket";
 import { TeamNav } from "../team-nav";
+import { PageFrame } from "@/components/theme/PageFrame";
+import { HeaderBanner } from "@/components/theme/HeaderBanner";
+import { Panel, PanelTitle } from "@/components/theme/Panel";
 
-// Section 7.4 Inventory screen: material quantities, source history,
-// available bank stock + tax rates during Stage 2.
+// Section 7.4 Inventory screen, styled with the legacy cart page's exact
+// banner/panel treatment (cart/page.tsx's "Won Auctions Panel" pattern).
 export default function InventoryPage({ params }: { params: Promise<{ eventId: string }> }) {
   const { eventId } = use(params);
   const { status } = useSession();
@@ -34,61 +37,45 @@ export default function InventoryPage({ params }: { params: Promise<{ eventId: s
     if (connected) refresh();
   }, [connected, refresh]);
 
-  if (!overview) return <main style={{ padding: "2rem" }}>Loading…</main>;
+  if (!overview) return <PageFrame><p className="text-[#F1EBB5]">Loading…</p></PageFrame>;
 
   return (
-    <main style={{ padding: "2rem", fontFamily: "system-ui", maxWidth: 800 }}>
+    <PageFrame>
       <TeamNav eventId={eventId} />
-      <h1>Inventory</h1>
+      <HeaderBanner image="/assets/images/cart_page/header.png">MY INVENTORY</HeaderBanner>
 
       {!overview.myTeam ? (
-        <p>Join a team first.</p>
+        <p className="text-[#F1EBB5]">Join a team first.</p>
       ) : (
-        <>
-          <h2>{overview.myTeam.name}'s materials</h2>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr>
-                <th style={{ textAlign: "left" }}>Material</th>
-                <th style={{ textAlign: "right" }}>Quantity</th>
-              </tr>
-            </thead>
-            <tbody>
-              {inventory?.filter((i) => i.quantity !== 0).map((i) => (
-                <tr key={i.materialTypeId}>
-                  <td>{i.materialName}</td>
-                  <td style={{ textAlign: "right" }}>{i.quantity}</td>
-                </tr>
-              ))}
-              {inventory?.every((i) => i.quantity === 0) && (
-                <tr>
-                  <td colSpan={2} style={{ color: "#666" }}>No materials yet.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </>
+        <Panel className="w-full max-w-3xl mb-6">
+          <PanelTitle>
+            <img src="/assets/images/cart_page/cart-icon.png" className="w-6 h-6" alt="" />
+            {overview.myTeam.name}'S MATERIALS
+          </PanelTitle>
+          <div className="space-y-2">
+            {inventory?.filter((i) => i.quantity !== 0).map((i) => (
+              <div key={i.materialTypeId} className="bg-[#764A21]/52 p-3 rounded-lg shadow-inner flex justify-between items-center">
+                <span className="text-yellow-300">{i.materialName}</span>
+                <span className="text-white text-lg font-bold">{i.quantity}</span>
+              </div>
+            ))}
+            {inventory?.every((i) => i.quantity === 0) && <p className="text-[#F1EBB5] text-center py-4">No materials yet.</p>}
+          </div>
+        </Panel>
       )}
 
-      <h2 style={{ marginTop: "2rem" }}>Bank stock (Stage 2)</h2>
-      <table style={{ width: "100%", borderCollapse: "collapse" }}>
-        <thead>
-          <tr>
-            <th style={{ textAlign: "left" }}>Material</th>
-            <th style={{ textAlign: "right" }}>Available</th>
-            <th style={{ textAlign: "right" }}>Tax</th>
-          </tr>
-        </thead>
-        <tbody>
+      <Panel className="w-full max-w-3xl">
+        <PanelTitle>BANK STOCK (STAGE 2)</PanelTitle>
+        <div className="space-y-2">
           {bankStock?.map((s) => (
-            <tr key={s.materialTypeId}>
-              <td>{s.materialName}</td>
-              <td style={{ textAlign: "right" }}>{s.availableQuantity}</td>
-              <td style={{ textAlign: "right" }}>{s.isRare ? overview.settings.rareBankTaxPercent : overview.settings.normalBankTaxPercent}%</td>
-            </tr>
+            <div key={s.materialTypeId} className="bg-[#764A21]/52 p-3 rounded-lg shadow-inner flex justify-between items-center">
+              <span className="text-yellow-300">{s.materialName}</span>
+              <span className="text-white">{s.availableQuantity} available</span>
+              <span className="text-white/70 text-sm">{s.isRare ? overview.settings.rareBankTaxPercent : overview.settings.normalBankTaxPercent}% tax</span>
+            </div>
           ))}
-        </tbody>
-      </table>
-    </main>
+        </div>
+      </Panel>
+    </PageFrame>
   );
 }
