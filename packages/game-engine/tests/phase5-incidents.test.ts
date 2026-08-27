@@ -131,3 +131,25 @@ describe("Manual correction rehearsal scenarios (Section 10 / CONTINGENCIES)", (
     ).rejects.toMatchObject({ code: "forbidden" });
   });
 });
+
+describe("Event staff bootstrap", () => {
+  it("lets anyone add the FIRST staff member, then requires existing staff for every one after", async () => {
+    const [event] = await dbModule.db.insert(schema.events).values({ name: "Bootstrap Test" }).returning();
+    const [organizer] = await dbModule.db.insert(schema.participants).values({ name: "Organizer", email: `organizer-${event.id}@test.local` }).returning();
+    const [randomPerson] = await dbModule.db.insert(schema.participants).values({ name: "Random", email: `random-${event.id}@test.local` }).returning();
+    const [secondMod] = await dbModule.db.insert(schema.participants).values({ name: "SecondMod", email: `secondmod-${event.id}@test.local` }).returning();
+
+    // Nobody is staff yet — the very first add succeeds for anyone.
+    const first = await engine.addEventStaff({ eventId: event.id, requesterParticipantId: randomPerson.id, targetEmail: organizer.email, role: "moderator" });
+    expect(first.participantId).toBe(organizer.id);
+
+    // Now that staff exists, a non-staff requester is refused...
+    await expect(
+      engine.addEventStaff({ eventId: event.id, requesterParticipantId: randomPerson.id, targetEmail: secondMod.email, role: "moderator" }),
+    ).rejects.toMatchObject({ code: "forbidden" });
+
+    // ...but the organizer (now staff) can add someone else.
+    const second = await engine.addEventStaff({ eventId: event.id, requesterParticipantId: organizer.id, targetEmail: secondMod.email, role: "moderator" });
+    expect(second.participantId).toBe(secondMod.id);
+  });
+});

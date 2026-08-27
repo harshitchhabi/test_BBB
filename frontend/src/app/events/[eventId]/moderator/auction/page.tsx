@@ -4,6 +4,7 @@ import { use, useCallback, useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useEventSocket } from "@/lib/use-event-socket";
 import type { AuctionStateResponse } from "@/lib/auction-state-types";
+import { ModNav } from "../mod-nav";
 
 // Section 7.8/7.9 moderator console — Stage 1 Auction Control slice only
 // (start round, open next lot, close lot). Every button here calls the
@@ -55,6 +56,7 @@ export default function ModeratorAuctionPage({ params }: { params: Promise<{ eve
 
   return (
     <main style={{ padding: "2rem", fontFamily: "system-ui", maxWidth: 800 }}>
+      <ModNav eventId={eventId} />
       <h1>Stage 1 Auction Control</h1>
 
       <section style={{ marginBottom: "1.5rem" }}>

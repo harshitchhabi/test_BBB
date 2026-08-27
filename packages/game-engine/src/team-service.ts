@@ -190,3 +190,61 @@ export async function joinTeam(params: { eventId: string; participantId: string;
     return team;
   });
 }
+
+// Bootstraps or extends event_staff. Section 7.9's setup checklist
+// otherwise required a direct database insert to create the first
+// moderator for an event (flagged in docs/phase-5.md) — this closes that
+// gap with a standard "first user becomes admin" bootstrap: if an event
+// has zero staff rows, ANY signed-in participant may add themselves or
+// someone else as the first one; after that, only existing staff can add
+// more. This mirrors how most tools solve the same cold-start problem
+// (someone has to be trusted first) without inventing an invite-link/
+// token system for what is, in practice, a handful of people the event
+// organizer already knows personally.
+export async function addEventStaff(params: {
+  eventId: string;
+  requesterParticipantId: string;
+  targetEmail: string;
+  role: "moderator" | "admin";
+}) {
+  return runInTransaction(async (tx) => {
+    const [event] = await tx.select().from(events).where(eq(events.id, params.eventId));
+    if (!event) throw new GameError("not_found", "Event not found.");
+
+    const existingStaff = await tx.select({ id: eventStaff.id }).from(eventStaff).where(eq(eventStaff.eventId, params.eventId));
+    if (existingStaff.length > 0) {
+      const [requesterIsStaff] = await tx
+        .select({ id: eventStaff.id })
+        .from(eventStaff)
+        .where(and(eq(eventStaff.eventId, params.eventId), eq(eventStaff.participantId, params.requesterParticipantId)));
+      if (!requesterIsStaff) throw new GameError("forbidden", "Only existing event staff can add more staff.");
+    }
+
+    const [targetParticipant] = await tx.select().from(participants).where(eq(participants.email, params.targetEmail));
+    if (!targetParticipant) {
+      throw new GameError("not_found", "No participant with that email has signed in yet — they need to sign in once first.");
+    }
+
+    const [existingRow] = await tx
+      .select({ id: eventStaff.id })
+      .from(eventStaff)
+      .where(and(eq(eventStaff.eventId, params.eventId), eq(eventStaff.participantId, targetParticipant.id)));
+    if (existingRow) throw new GameError("conflict", "That participant is already staff for this event.");
+
+    const [staffRow] = await tx
+      .insert(eventStaff)
+      .values({ eventId: params.eventId, participantId: targetParticipant.id, role: params.role })
+      .returning();
+
+    await recordAudit(tx, {
+      eventId: params.eventId,
+      actorParticipantId: params.requesterParticipantId,
+      action: "event_staff.added",
+      entityType: "event_staff",
+      entityId: staffRow.id,
+      afterJson: { targetEmail: params.targetEmail, role: params.role },
+    });
+
+    return staffRow;
+  });
+}

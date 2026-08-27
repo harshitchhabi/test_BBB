@@ -8,13 +8,15 @@ pattern, Next.js/Drizzle conventions, and folder layout are being reused
 where they fit; its game-state model is being replaced per the plan's
 Section 3 gap assessment).
 
-Status: **Phase 5 complete** (see `docs/phase-0.md` through
-`docs/phase-5.md`, and `docs/moderator-quick-guide.md`). The full game
-loop — Stage 1 auction through Stage 3 scoring, plus moderator incident
-handling (withdraw/disqualify, balance correction, void/reopen a lot) — is
-implemented and tested end to end. What's left before a live event: Stage
-2/3 UI screens (the engine + API for both are done) and an actual human
-rehearsal.
+Status: **Feature-complete against the implementation plan** (see
+`docs/phase-0.md` through `docs/phase-5.md`, `docs/phase-6-ui-
+completion.md`, and `docs/moderator-quick-guide.md`). Every stage — team
+registration, Stage 1 auction, Stage 2 trade/build, Stage 3 city
+auction/reveal/scoring, and moderator incident handling — has a working
+screen, a tested engine, and a documented API. What's left before a live
+event: an actual human rehearsal (nothing substitutes for that) and,
+optionally, a visual design pass — every screen so far is functional,
+plain-styled UI.
 
 ## Layout
 
