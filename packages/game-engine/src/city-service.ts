@@ -224,6 +224,23 @@ async function settleCityAuction(
 
   const [team] = await tx.select().from(teams).where(eq(teams.id, params.winningBid.teamId)).for("update");
   if (!team) throw new GameError("not_found", "Winning team not found.");
+  if (team.status !== "active") {
+    // Same contingency as auction-service.ts's closeLot: a team that
+    // withdrew/was disqualified mid-auction must never settle a city it
+    // was leading on when the auction closed.
+    await tx.update(cityBids).set({ status: "voided" }).where(eq(cityBids.id, params.winningBid.id));
+    await tx.update(cityAuctions).set({ status: "closed" }).where(eq(cityAuctions.id, params.auction.id));
+    await recordAudit(tx, {
+      eventId: params.eventId,
+      actorParticipantId: params.actorParticipantId,
+      reason: `Winning team is no longer active (${team.status}).`,
+      isOverride: true,
+      action: "city_bid.voided_team_inactive",
+      entityType: "city_bid",
+      entityId: params.winningBid.id,
+    });
+    return { winnerTeamId: null as string | null, cityId: city.id };
+  }
 
   const [nextSaleOrder] = await tx
     .select({ n: sql<number>`coalesce(max(${cities.saleOrder}), 0)` })

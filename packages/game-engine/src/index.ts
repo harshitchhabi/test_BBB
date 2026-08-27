@@ -13,3 +13,4 @@ export * from "./inspection-service";
 export * from "./city-service"; // includes closeExpiredCityAuctions
 export * from "./scout-report-service";
 export * from "./scoring-service";
+export * from "./incident-service";

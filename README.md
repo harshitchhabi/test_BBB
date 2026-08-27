@@ -8,11 +8,13 @@ pattern, Next.js/Drizzle conventions, and folder layout are being reused
 where they fit; its game-state model is being replaced per the plan's
 Section 3 gap assessment).
 
-Status: **Phase 4 complete** (see `docs/phase-0.md` through
-`docs/phase-4.md`). Phase 5 (event rehearsal and operational hardening)
-not yet started. The full game loop — Stage 1 auction through Stage 3
-scoring — is implemented and tested end to end; the remaining gap before a
-live event is Stage 2/3 UI screens and Phase 5's hardening pass.
+Status: **Phase 5 complete** (see `docs/phase-0.md` through
+`docs/phase-5.md`, and `docs/moderator-quick-guide.md`). The full game
+loop — Stage 1 auction through Stage 3 scoring, plus moderator incident
+handling (withdraw/disqualify, balance correction, void/reopen a lot) — is
+implemented and tested end to end. What's left before a live event: Stage
+2/3 UI screens (the engine + API for both are done) and an actual human
+rehearsal.
 
 ## Layout
 

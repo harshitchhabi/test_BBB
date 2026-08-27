@@ -28,7 +28,13 @@ export default function ModeratorAuctionPage({ params }: { params: Promise<{ eve
     if (status === "authenticated") refresh();
   }, [status, refresh]);
 
-  useEventSocket(status === "authenticated" ? eventId : null, () => refresh());
+  const { connected } = useEventSocket(status === "authenticated" ? eventId : null, () => refresh());
+
+  // Same reconnect-refetch fix as the team Live Auction screen — don't
+  // rely on a broadcast happening to arrive after the socket comes back.
+  useEffect(() => {
+    if (connected) refresh();
+  }, [connected, refresh]);
 
   async function call(path: string, body?: unknown) {
     setBusy(true);

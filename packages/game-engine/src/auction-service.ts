@@ -402,12 +402,14 @@ export async function closeLot(params: {
 
     const [team] = await tx.select().from(teams).where(eq(teams.id, winningBid.teamId)).for("update");
     if (!team) throw new GameError("not_found", "Winning team not found.");
-    if (team.auctionTokens < winningBid.amount) {
-      // Rulebook contingency: "A team can't pay its bid: void the bid,
-      // re-offer the lot immediately." That re-offer is a moderator action
-      // (Phase 5); here we only guarantee we never let the balance go
-      // negative — we void the bid and the lot goes unsold instead of
-      // silently under-charging the team.
+    if (team.auctionTokens < winningBid.amount || team.status !== "active") {
+      // Rulebook contingencies: "A team can't pay its bid: void the bid,
+      // re-offer the lot immediately" AND "A team drops out mid-game:
+      // remove its unsold materials" — both land here, since a withdrawn/
+      // disqualified team's in-flight winning bid must never settle just
+      // because it happened to be leading when the lot closed. Re-offer
+      // itself is a moderator action (incident-service.ts's reopenLot);
+      // this only guarantees the lot never settles to an invalid winner.
       await tx.update(bids).set({ status: "voided" }).where(eq(bids.id, winningBid.id));
       await tx.update(auctionLots).set({ status: "unsold" }).where(eq(auctionLots.id, lot.id));
       await tx.update(materialLots).set({ status: "bank_stock" }).where(eq(materialLots.id, materialLot.id));
@@ -415,7 +417,10 @@ export async function closeLot(params: {
       await recordAudit(tx, {
         eventId: params.eventId,
         actorParticipantId: params.actorParticipantId,
-        reason: "Winning team could not cover its bid at close.",
+        reason:
+          team.status !== "active"
+            ? `Winning team is no longer active (${team.status}).`
+            : "Winning team could not cover its bid at close.",
         isOverride: true,
         action: "bid.voided_insufficient_funds",
         entityType: "bid",

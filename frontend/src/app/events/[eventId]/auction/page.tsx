@@ -28,9 +28,18 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ eventId:
 
   // Any of these broadcasts means the screen is stale — just refetch the
   // read-model rather than trying to hand-patch state from the WS payload.
-  useEventSocket(status === "authenticated" ? eventId : null, () => {
+  const { connected } = useEventSocket(status === "authenticated" ? eventId : null, () => {
     refresh();
   });
+
+  // A dropped-then-restored connection (phone locked, wifi blip, relay
+  // restart) can miss whatever broadcasts fired while it was down — Phase
+  // 5 rehearsal scenario "a server or browser restarts during a live
+  // lot." Refetching the instant the socket reconnects, not only when a
+  // message happens to arrive afterward, is what actually closes that gap.
+  useEffect(() => {
+    if (connected) refresh();
+  }, [connected, refresh]);
 
   async function submitBid() {
     if (!state?.liveLot || !state.myTeamId) return;
