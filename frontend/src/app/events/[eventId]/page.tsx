@@ -19,6 +19,8 @@ export default function EventHomePage({ params }: { params: Promise<{ eventId: s
   const [teamName, setTeamName] = useState("");
   const [joinCode, setJoinCode] = useState("");
   const [message, setMessage] = useState<string | null>(null);
+  const [newLeaderEmail, setNewLeaderEmail] = useState("");
+  const [teamMessage, setTeamMessage] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     const res = await fetch(`/api/events/${eventId}/overview`);
@@ -53,6 +55,30 @@ export default function EventHomePage({ params }: { params: Promise<{ eventId: s
     if (!res.ok) setMessage(body.message);
     else {
       setJoinCode("");
+      refresh();
+    }
+  }
+
+  async function leaveTeam() {
+    setTeamMessage(null);
+    const res = await fetch(`/api/events/${eventId}/teams/leave`, { method: "POST" });
+    const body = await res.json();
+    if (!res.ok) setTeamMessage(body.message);
+    else refresh();
+  }
+
+  async function transferLeadership() {
+    if (!overview?.myTeam) return;
+    setTeamMessage(null);
+    const res = await fetch(`/api/events/${eventId}/teams/${overview.myTeam.id}/transfer-leadership`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ newLeaderEmail }),
+    });
+    const body = await res.json();
+    if (!res.ok) setTeamMessage(body.message);
+    else {
+      setNewLeaderEmail("");
       refresh();
     }
   }
@@ -110,6 +136,26 @@ export default function EventHomePage({ params }: { params: Promise<{ eventId: s
               <StatTile label="Trades used" value={overview.myTeam.tradeCount} />
             </div>
           </div>
+
+          {overview.myRole === "leader" && (
+            <div className="w-full bg-[#3b2a1a]/70 rounded p-3">
+              <p className="text-yellow-300 text-sm mb-2">Transfer leadership to a teammate (they must have signed in already):</p>
+              <div className="flex gap-2">
+                <input
+                  value={newLeaderEmail}
+                  onChange={(e) => setNewLeaderEmail(e.target.value)}
+                  placeholder="teammate@email.com"
+                  className="flex-1 px-2 py-1 rounded text-black text-sm"
+                />
+                <WoodButton className="text-sm px-3 py-1" onClick={transferLeadership} disabled={!newLeaderEmail}>
+                  Transfer
+                </WoodButton>
+              </div>
+            </div>
+          )}
+
+          <WoodButton variant="danger" onClick={leaveTeam}>Leave team</WoodButton>
+          {teamMessage && <p className="text-red-300">{teamMessage}</p>}
         </div>
       ) : (
         <Panel className="w-full max-w-lg">

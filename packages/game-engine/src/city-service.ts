@@ -320,6 +320,26 @@ export async function assignLastCity(params: { eventId: string; cityId: string; 
     if (!team || team.eventId !== params.eventId) throw new GameError("not_found", "Team not found.");
     await assertTeamHasNoCity(tx, params.eventId, team.id);
 
+    // Verify this is genuinely "the last team, the last city" — not just
+    // trusted to the moderator's word. Without this check, assignLastCity
+    // would let a moderator hand any city to any team at opening bid at
+    // any point in Stage 3, bypassing the auction entirely.
+    const allCities = await tx.select().from(cities).where(eq(cities.eventId, params.eventId));
+    const unassignedCities = allCities.filter((c) => !c.assignedTeamId);
+    const activeTeams = await tx.select().from(teams).where(and(eq(teams.eventId, params.eventId), eq(teams.status, "active")));
+    const teamsWithoutCity = activeTeams.filter((t) => !allCities.some((c) => c.assignedTeamId === t.id));
+
+    if (unassignedCities.length !== 1 || teamsWithoutCity.length !== 1) {
+      throw new GameError(
+        "conflict",
+        `This is only for the last team/last city situation (currently ${teamsWithoutCity.length} team(s) without a city, ` +
+          `${unassignedCities.length} unsold cit${unassignedCities.length === 1 ? "y" : "ies"}) — run a normal auction instead.`,
+      );
+    }
+    if (teamsWithoutCity[0].id !== team.id || unassignedCities[0].id !== city.id) {
+      throw new GameError("conflict", "This is not the one remaining team/city pair.");
+    }
+
     const amount = city.openingBid;
     const cityWalletUsed = Math.min(amount, team.cityWalletTokens);
     const auctionTokensUsed = amount - cityWalletUsed;

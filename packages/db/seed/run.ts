@@ -4,9 +4,22 @@
 // It deliberately does NOT create teams, rounds, lots, or any Stage
 // 1-3 runtime state — those are Phase 1+ concerns.
 //
-// Usage: DATABASE_URL=... npx tsx seed/run.ts ["Event name"]
+// Usage: DATABASE_URL=... npx tsx seed/run.ts ["Event name"] ["creator@email.com"]
+//
+// The creator email is optional but strongly recommended: it's stored as
+// events.created_by and becomes the ONLY participant allowed to claim the
+// first moderator slot for this event (see addEventStaff in
+// packages/game-engine/src/team-service.ts) — without it, bootstrap falls
+// back to "whoever claims it first," which is a real gap if the event
+// id/link ever leaks before you get to /moderator/setup yourself. The
+// email must belong to someone who has already signed into the app at
+// least once (participants only exist after a Google sign-in), so seed
+// the event, have your organizer account sign in once, then run the seed
+// again with their email if you skipped it the first time — or just add
+// yourself as staff manually via addEventStaff/the setup screen while
+// created_by is still null, before sharing the link with anyone else.
 import "dotenv/config";
-import { db } from "../index";
+import { db, eq } from "../index";
 import {
   events,
   eventSettings,
@@ -16,6 +29,7 @@ import {
   recipeRequirements,
   cities,
   cityPreferences,
+  participants,
 } from "../schema";
 import {
   MATERIAL_SEED,
@@ -26,10 +40,25 @@ import {
   openingBidForTier,
 } from "./data";
 
-async function seed(eventName: string) {
+async function seed(eventName: string, creatorEmail?: string) {
   await db.transaction(async (tx) => {
-    const [event] = await tx.insert(events).values({ name: eventName }).returning();
-    console.log(`Created event ${event.id} (${event.name})`);
+    let createdBy: string | undefined;
+    if (creatorEmail) {
+      const [creator] = await tx.select().from(participants).where(eq(participants.email, creatorEmail));
+      if (!creator) {
+        throw new Error(
+          `No participant with email "${creatorEmail}" has signed in yet. Have them sign into the app once first, then re-run this seed.`,
+        );
+      }
+      createdBy = creator.id;
+    } else {
+      console.warn(
+        "⚠️  No creator email given — this event's first moderator slot will be open to whoever claims it first. Pass an email to lock it down: npx tsx seed/run.ts \"Event name\" you@email.com",
+      );
+    }
+
+    const [event] = await tx.insert(events).values({ name: eventName, createdBy }).returning();
+    console.log(`Created event ${event.id} (${event.name})${createdBy ? ` — created_by locked to ${creatorEmail}` : ""}`);
 
     await tx.insert(eventSettings).values({ eventId: event.id });
 
@@ -134,7 +163,8 @@ async function seed(eventName: string) {
 }
 
 const eventName = process.argv[2] ?? "Bricks by Bid";
-seed(eventName)
+const creatorEmail = process.argv[3];
+seed(eventName, creatorEmail)
   .then(() => process.exit(0))
   .catch((err) => {
     console.error("Seed failed:", err);

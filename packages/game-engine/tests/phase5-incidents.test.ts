@@ -133,14 +133,20 @@ describe("Manual correction rehearsal scenarios (Section 10 / CONTINGENCIES)", (
 });
 
 describe("Event staff bootstrap", () => {
-  it("lets anyone add the FIRST staff member, then requires existing staff for every one after", async () => {
-    const [event] = await dbModule.db.insert(schema.events).values({ name: "Bootstrap Test" }).returning();
-    const [organizer] = await dbModule.db.insert(schema.participants).values({ name: "Organizer", email: `organizer-${event.id}@test.local` }).returning();
-    const [randomPerson] = await dbModule.db.insert(schema.participants).values({ name: "Random", email: `random-${event.id}@test.local` }).returning();
-    const [secondMod] = await dbModule.db.insert(schema.participants).values({ name: "SecondMod", email: `secondmod-${event.id}@test.local` }).returning();
+  it("when created_by is set, only that participant can claim the first staff slot", async () => {
+    const [organizer] = await dbModule.db.insert(schema.participants).values({ name: "Organizer", email: `organizer-${Date.now()}@test.local` }).returning();
+    const [randomPerson] = await dbModule.db.insert(schema.participants).values({ name: "Random", email: `random-${Date.now()}@test.local` }).returning();
+    const [secondMod] = await dbModule.db.insert(schema.participants).values({ name: "SecondMod", email: `secondmod-${Date.now()}@test.local` }).returning();
+    const [event] = await dbModule.db.insert(schema.events).values({ name: "Bootstrap Test (locked)", createdBy: organizer.id }).returning();
 
-    // Nobody is staff yet — the very first add succeeds for anyone.
-    const first = await engine.addEventStaff({ eventId: event.id, requesterParticipantId: randomPerson.id, targetEmail: organizer.email, role: "moderator" });
+    // A random signed-in participant can no longer grab the first slot
+    // just by getting there first — this is the loophole being closed.
+    await expect(
+      engine.addEventStaff({ eventId: event.id, requesterParticipantId: randomPerson.id, targetEmail: randomPerson.email, role: "moderator" }),
+    ).rejects.toMatchObject({ code: "forbidden" });
+
+    // The actual creator can claim it (for themselves or someone else).
+    const first = await engine.addEventStaff({ eventId: event.id, requesterParticipantId: organizer.id, targetEmail: organizer.email, role: "moderator" });
     expect(first.participantId).toBe(organizer.id);
 
     // Now that staff exists, a non-staff requester is refused...
@@ -151,5 +157,13 @@ describe("Event staff bootstrap", () => {
     // ...but the organizer (now staff) can add someone else.
     const second = await engine.addEventStaff({ eventId: event.id, requesterParticipantId: organizer.id, targetEmail: secondMod.email, role: "moderator" });
     expect(second.participantId).toBe(secondMod.id);
+  });
+
+  it("without created_by, falls back to first-come-first-served (the documented dev-only escape hatch)", async () => {
+    const [event] = await dbModule.db.insert(schema.events).values({ name: "Bootstrap Test (open)" }).returning();
+    const [randomPerson] = await dbModule.db.insert(schema.participants).values({ name: "Random", email: `random2-${Date.now()}@test.local` }).returning();
+
+    const first = await engine.addEventStaff({ eventId: event.id, requesterParticipantId: randomPerson.id, targetEmail: randomPerson.email, role: "moderator" });
+    expect(first.participantId).toBe(randomPerson.id);
   });
 });

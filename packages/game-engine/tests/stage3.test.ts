@@ -61,12 +61,26 @@ describe("City auction", () => {
   });
 
   it("assigns the last remaining city to the last team without bidding, at the opening bid", async () => {
-    const { event, moderator, cities, teamA } = await createStage3Fixture(dbModule.db);
+    const { event, moderator, cities, teamA, teamB } = await createStage3Fixture(dbModule.db);
+    // Genuinely make it "the last team, the last city": teamB already has
+    // metroCity, leaving exactly teamA without a city and exactly
+    // townCity unsold.
+    await dbModule.db.update(schema.cities).set({ assignedTeamId: teamB.team.id, saleOrder: 1 }).where(dbModule.eq(schema.cities.id, cities.metroCity.id));
+
     const result = await engine.assignLastCity({ eventId: event.id, cityId: cities.townCity.id, teamId: teamA.team.id, actorParticipantId: moderator.id });
     expect(result.winnerTeamId).toBe(teamA.team.id);
 
     const [updatedCity] = await dbModule.db.select().from(schema.cities).where(dbModule.eq(schema.cities.id, cities.townCity.id));
     expect(updatedCity.assignedTeamId).toBe(teamA.team.id);
+  });
+
+  it("refuses assignLastCity when it is NOT genuinely the last team/city situation", async () => {
+    const { event, moderator, cities, teamA } = await createStage3Fixture(dbModule.db);
+    // Both teamA and teamB still lack a city, and both cities are unsold —
+    // this must be refused even though a moderator is calling it.
+    await expect(
+      engine.assignLastCity({ eventId: event.id, cityId: cities.townCity.id, teamId: teamA.team.id, actorParticipantId: moderator.id }),
+    ).rejects.toMatchObject({ code: "conflict" });
   });
 });
 

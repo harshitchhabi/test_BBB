@@ -10,5 +10,12 @@ export default defineConfig({
     // "game-engine" — running files in separate processes/threads keeps
     // that env var and the module cache from leaking across files.
     pool: "forks",
+    // Each PGlite instance is a real WASM Postgres — memory-heavy enough
+    // that running every test file's instance at once (the default, one
+    // fork per file in parallel) exhausted available memory once the
+    // suite grew past ~7 files ("Array buffer allocation failed" / worker
+    // forks dying). Running files one at a time trades some wall-clock
+    // time for actually finishing.
+    fileParallelism: false,
   },
 });

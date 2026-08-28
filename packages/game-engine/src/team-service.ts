@@ -1,4 +1,4 @@
-import { db, eq, and } from "db";
+import { db, eq, and, sql } from "db";
 import { events, eventSettings, eventStaff, teams, teamMembers, participants } from "db/schema";
 import type { ParticipantEventContext } from "common";
 import { GameError } from "./errors";
@@ -193,14 +193,17 @@ export async function joinTeam(params: { eventId: string; participantId: string;
 
 // Bootstraps or extends event_staff. Section 7.9's setup checklist
 // otherwise required a direct database insert to create the first
-// moderator for an event (flagged in docs/phase-5.md) — this closes that
-// gap with a standard "first user becomes admin" bootstrap: if an event
-// has zero staff rows, ANY signed-in participant may add themselves or
-// someone else as the first one; after that, only existing staff can add
-// more. This mirrors how most tools solve the same cold-start problem
-// (someone has to be trusted first) without inventing an invite-link/
-// token system for what is, in practice, a handful of people the event
-// organizer already knows personally.
+// moderator for an event (flagged in docs/phase-5.md). The original fix
+// for that (any signed-in participant may claim the first staff slot for
+// a fresh event) turned out to itself be a loophole: whoever reaches
+// /moderator/setup first — not necessarily the actual organizer — becomes
+// moderator, which matters if the event id/link ever leaks or is guessed
+// before the real organizer claims it. Fixed by tracking who actually
+// created the event (events.created_by, set by packages/db/seed/run.ts):
+// when that's set, ONLY that participant may claim the first staff slot.
+// It stays nullable, and bootstrap falls back to "anyone" for an event
+// seeded without specifying a creator — a deliberate, narrower escape
+// hatch for local/dev use, not the recommended path for a real event.
 export async function addEventStaff(params: {
   eventId: string;
   requesterParticipantId: string;
@@ -218,6 +221,8 @@ export async function addEventStaff(params: {
         .from(eventStaff)
         .where(and(eq(eventStaff.eventId, params.eventId), eq(eventStaff.participantId, params.requesterParticipantId)));
       if (!requesterIsStaff) throw new GameError("forbidden", "Only existing event staff can add more staff.");
+    } else if (event.createdBy && event.createdBy !== params.requesterParticipantId) {
+      throw new GameError("forbidden", "Only the event's creator can claim the first moderator slot for this event.");
     }
 
     const [targetParticipant] = await tx.select().from(participants).where(eq(participants.email, params.targetEmail));
@@ -246,5 +251,95 @@ export async function addEventStaff(params: {
     });
 
     return staffRow;
+  });
+}
+
+// ---------------------------------------------------------------------
+// Leaving a team / transferring leadership
+// ---------------------------------------------------------------------
+// A real operational gap, not just a security one: there was no way for
+// anyone — not even a moderator — to change who leads a team, or for a
+// member to leave one. Whoever clicked "Create" first was stuck as leader
+// forever, and if that was the wrong person (or they can't make it to the
+// event), the only fix was hand-editing the database.
+
+export async function leaveTeam(params: { eventId: string; participantId: string }) {
+  return runInTransaction(async (tx) => {
+    const [membership] = await tx
+      .select()
+      .from(teamMembers)
+      .where(and(eq(teamMembers.eventId, params.eventId), eq(teamMembers.participantId, params.participantId)))
+      .for("update");
+    if (!membership) throw new GameError("not_found", "You are not on a team in this event.");
+
+    if (membership.role === "leader") {
+      const [otherMembers] = await tx
+        .select({ id: teamMembers.id })
+        .from(teamMembers)
+        .where(and(eq(teamMembers.teamId, membership.teamId), sql`${teamMembers.participantId} != ${params.participantId}`));
+      if (otherMembers) {
+        throw new GameError("conflict", "Transfer leadership to another member before leaving — a team with other members can't be left leaderless.");
+      }
+    }
+
+    await tx.delete(teamMembers).where(eq(teamMembers.id, membership.id));
+
+    await recordAudit(tx, {
+      eventId: params.eventId,
+      actorParticipantId: params.participantId,
+      action: "team.left",
+      entityType: "team",
+      entityId: membership.teamId,
+      beforeJson: membership,
+    });
+
+    return { teamId: membership.teamId };
+  });
+}
+
+export async function transferLeadership(params: {
+  eventId: string;
+  teamId: string;
+  requesterParticipantId: string;
+  newLeaderParticipantId: string;
+}) {
+  return runInTransaction(async (tx) => {
+    // The current leader can hand off on their own; staff can do it too,
+    // for exactly the recovery case this function exists for (leader is
+    // unreachable, wrong person became leader, etc.).
+    await assertTeamLeaderOrStaffTx(tx, params.eventId, params.teamId, params.requesterParticipantId);
+
+    const [currentLeader] = await tx
+      .select()
+      .from(teamMembers)
+      .where(and(eq(teamMembers.teamId, params.teamId), eq(teamMembers.role, "leader")))
+      .for("update");
+    if (!currentLeader) throw new GameError("not_found", "This team has no current leader on record.");
+
+    const [newLeaderMembership] = await tx
+      .select()
+      .from(teamMembers)
+      .where(and(eq(teamMembers.teamId, params.teamId), eq(teamMembers.participantId, params.newLeaderParticipantId)))
+      .for("update");
+    if (!newLeaderMembership) throw new GameError("not_found", "The new leader must already be a member of this team.");
+    if (newLeaderMembership.id === currentLeader.id) throw new GameError("conflict", "That participant is already the leader.");
+
+    await tx.update(teamMembers).set({ role: "member" }).where(eq(teamMembers.id, currentLeader.id));
+    await tx.update(teamMembers).set({ role: "leader" }).where(eq(teamMembers.id, newLeaderMembership.id));
+
+    const isStaffAction = params.requesterParticipantId !== currentLeader.participantId;
+    await recordAudit(tx, {
+      eventId: params.eventId,
+      actorParticipantId: params.requesterParticipantId,
+      reason: isStaffAction ? "Moderator-assisted leadership transfer." : undefined,
+      isOverride: isStaffAction,
+      action: "team.leadership_transferred",
+      entityType: "team",
+      entityId: params.teamId,
+      beforeJson: { leaderParticipantId: currentLeader.participantId },
+      afterJson: { leaderParticipantId: newLeaderMembership.participantId },
+    });
+
+    return { teamId: params.teamId, newLeaderParticipantId: newLeaderMembership.participantId };
   });
 }

@@ -20,6 +20,15 @@ export const events = pgTable("events", {
   activeRoundId: uuid("active_round_id"),
   activeCityAuctionId: uuid("active_city_auction_id"),
   rulesVersion: text("rules_version").notNull().default("bbb-1"),
+  // Nullable because packages/db/seed/run.ts can create an event without
+  // any signed-in participant to attribute it to (it's a CLI script, not
+  // an authenticated request). When set, this is the ONLY participant
+  // allowed to claim the event's first moderator slot — see
+  // addEventStaff in team-service.ts. When null (an event seeded without
+  // specifying one), the bootstrap falls back to "whoever gets there
+  // first," which is the loophole this column exists to close for events
+  // that do set it.
+  createdBy: uuid("created_by").references(() => participants.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   startedAt: timestamp("started_at"),
   completedAt: timestamp("completed_at"),
