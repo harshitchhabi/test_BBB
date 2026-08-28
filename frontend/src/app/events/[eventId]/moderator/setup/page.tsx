@@ -9,11 +9,12 @@ import { Panel, PanelTitle, WoodButton } from "@/components/theme/Panel";
 
 // Section 7.8 "Event Setup" nav item. Materials/recipes/shocks/cities are
 // seeded from packages/db/seed (Phase 0) rather than authored through a
-// UI. This screen covers the two things that genuinely need a person:
-// adding moderators, and — the big one — actually advancing the event
-// through its stages. Nothing else in the system ever did this: without
-// a control here, the event stays stuck at "setup" forever and every
-// stage-gated action (starting Stage 1, trading, city auctions) fails.
+// UI. This screen covers what genuinely needs a person: advancing the
+// event through its stages (nothing else in the system does this —
+// without it the event stays stuck at "setup" forever), resetting the
+// whole event for a fresh round with a new set of teams on the same
+// event id/link (for running the same event multiple times — ~20-30
+// teams per round, not a fixed number), and adding moderators.
 const STAGE_LABELS: Record<string, string> = {
   setup: "Setup",
   lobby: "Lobby (teams can register)",
@@ -36,6 +37,11 @@ export default function ModeratorSetupPage({ params }: { params: Promise<{ event
   const [stageMessage, setStageMessage] = useState<string | null>(null);
   const [stageBusy, setStageBusy] = useState(false);
   const [pauseReason, setPauseReason] = useState("");
+
+  const [resetReason, setResetReason] = useState("");
+  const [resetConfirmed, setResetConfirmed] = useState(false);
+  const [resetBusy, setResetBusy] = useState(false);
+  const [resetMessage, setResetMessage] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     const res = await fetch(`/api/events/${eventId}/overview`);
@@ -76,6 +82,27 @@ export default function ModeratorSetupPage({ params }: { params: Promise<{ event
       }
     } finally {
       setStageBusy(false);
+    }
+  }
+
+  async function resetForNewRound() {
+    setResetBusy(true);
+    setResetMessage(null);
+    try {
+      const res = await fetch(`/api/events/${eventId}/reset`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ reason: resetReason }),
+      });
+      const body = await res.json();
+      if (!res.ok) setResetMessage(body.message);
+      else {
+        setResetReason("");
+        setResetConfirmed(false);
+        refresh();
+      }
+    } finally {
+      setResetBusy(false);
     }
   }
 
@@ -130,6 +157,30 @@ export default function ModeratorSetupPage({ params }: { params: Promise<{ event
         ) : (
           <p className="text-white/70">Loading…</p>
         )}
+      </Panel>
+
+      <Panel className="w-full max-w-lg mb-4 border-2 border-red-800">
+        <PanelTitle>RESET FOR A NEW ROUND</PanelTitle>
+        <p className="text-white/70 text-sm mb-3">
+          Permanently deletes every team, token balance, bid, trade, building, city assignment, and score for this
+          event — the same event id/link keeps working, ready for a brand new set of teams. Materials, recipes,
+          city list, and settings are kept exactly as configured. This cannot be undone (though the audit log of
+          the round you're ending is kept).
+        </p>
+        <input
+          value={resetReason}
+          onChange={(e) => setResetReason(e.target.value)}
+          placeholder="Reason (e.g. 'End of round 1') — required"
+          className="w-full px-3 py-2 rounded text-black mb-2"
+        />
+        <label className="flex items-center gap-2 text-white/90 text-sm mb-3">
+          <input type="checkbox" checked={resetConfirmed} onChange={(e) => setResetConfirmed(e.target.checked)} />
+          I understand this deletes all teams and progress for this event.
+        </label>
+        <WoodButton variant="danger" disabled={resetBusy || !resetReason || !resetConfirmed} onClick={resetForNewRound}>
+          Reset event for a new round
+        </WoodButton>
+        {resetMessage && <p className="text-red-300 mt-3">{resetMessage}</p>}
       </Panel>
 
       <Panel className="w-full max-w-lg">
