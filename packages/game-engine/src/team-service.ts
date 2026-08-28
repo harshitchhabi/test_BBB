@@ -156,6 +156,13 @@ async function insertTeamWithUniqueCode(
   throw new Error("unreachable");
 }
 
+// Kept working and unit-testable, but deliberately not wired to any API
+// route or UI: the app is now one person per team by product decision —
+// only the leader can ever take a write action anywhere (bid, trade,
+// build, scout, city-bid), so a second "member" login has no functional
+// purpose, and letting anyone join a team by its code was also more
+// attack surface than benefit. frontend/src/app/api/events/[eventId]/
+// teams/join was removed entirely rather than just hidden.
 export async function joinTeam(params: { eventId: string; participantId: string; code: string }) {
   return runInTransaction(async (tx) => {
     const [team] = await tx
