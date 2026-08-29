@@ -2,6 +2,7 @@
 
 import { use, useCallback, useEffect, useState } from "react";
 import { useSession, signIn } from "next-auth/react";
+import Link from "next/link";
 import { TeamNav } from "./team-nav";
 import { PageFrame } from "@/components/theme/PageFrame";
 import { HeaderBanner } from "@/components/theme/HeaderBanner";
@@ -91,6 +92,15 @@ export default function EventHomePage({ params }: { params: Promise<{ eventId: s
     <PageFrame>
       <TeamNav eventId={eventId} />
       <HeaderBanner image="/assets/images/team/header-bg.png">{overview.event.name}</HeaderBanner>
+
+      {overview.isStaff && (
+        <Panel className="mb-6 border-2 border-yellow-400 w-full max-w-md text-center">
+          <p className="text-yellow-300 mb-2">You are staff for this event.</p>
+          <Link href={`/events/${eventId}/moderator/setup`}>
+            <WoodButton variant="primary">Open Moderator Console →</WoodButton>
+          </Link>
+        </Panel>
+      )}
 
       <Panel className="mb-6">
         <div className="flex flex-wrap gap-2 justify-center text-[#F1EBB5] text-sm md:text-base">
