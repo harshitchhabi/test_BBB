@@ -1,5 +1,22 @@
-import { eq, and } from "db";
-import { eventSettings, teams, cities, auctionLots, bids, materialLots, teamInventoryTransactions } from "db/schema";
+import { eq, and, or } from "db";
+import {
+  eventSettings,
+  teams,
+  teamMembers,
+  cities,
+  cityAuctions,
+  cityBids,
+  auctionLots,
+  bids,
+  materialLots,
+  teamInventoryTransactions,
+  trades,
+  constructedBuildings,
+  inspections,
+  bankPurchases,
+  scoutReports,
+  scoreSnapshots,
+} from "db/schema";
 import { GameError } from "./errors";
 import { recordAudit } from "./audit";
 import { runInTransaction, type Tx } from "./tx";
@@ -237,5 +254,79 @@ export async function reopenLot(params: { eventId: string; auctionLotId: string;
 
     queueBroadcast({ eventId: params.eventId, type: "auction.lot_opened", data: reopened });
     return reopened;
+  });
+}
+
+// ---------------------------------------------------------------------
+// Permanently deleting a team
+// ---------------------------------------------------------------------
+
+// setTeamStatus (withdraw/disqualify) is the SAFE choice for a team with
+// real game history — it keeps every trade, bid, and building on record
+// (just excluded from scoring) and never touches another team's data.
+// This function is the blunt one: a genuine, permanent delete, for a
+// mistaken/duplicate registration or a team the moderator wants gone
+// entirely, not just benched.
+//
+// The honest tradeoff, stated plainly rather than hidden: trades are a
+// two-team record (proposer_team_id/counterparty_team_id are NOT NULL),
+// so deleting a team that traded with someone else deletes that trade
+// row too — the OTHER team loses its record of that trade along with it.
+// Everything else this function touches is either exclusively this team's
+// own data (its bids, inventory, buildings, inspections it filed, scout
+// reports, bank purchases — all safe to remove outright) or a nullable
+// "who won this" pointer on a shared record (auction_lots.winner_team_id,
+// city_auctions.winner_team_id, cities.assigned_team_id) that gets
+// cleared rather than deleting the shared record itself — the lot/city/
+// auction stays on the books, it just no longer claims this now-deleted
+// team won it.
+export async function deleteTeam(params: { eventId: string; teamId: string; actorParticipantId: string; reason: string }) {
+  return runInTransaction(async (tx, queueBroadcast) => {
+    await assertStaffTx(tx, params.eventId, params.actorParticipantId);
+    if (!params.reason) throw new GameError("conflict", "A reason is required to delete a team.");
+
+    const [team] = await tx.select().from(teams).where(eq(teams.id, params.teamId)).for("update");
+    if (!team || team.eventId !== params.eventId) throw new GameError("not_found", "Team not found.");
+
+    // Clear nullable "who won this" pointers on shared records first —
+    // these have real FK constraints with no cascade, so they'd block
+    // the final team delete otherwise.
+    await tx.update(auctionLots).set({ winnerTeamId: null }).where(eq(auctionLots.winnerTeamId, team.id));
+    await tx.update(cityAuctions).set({ winnerTeamId: null }).where(eq(cityAuctions.winnerTeamId, team.id));
+    await tx.update(cities).set({ assignedTeamId: null, saleOrder: null }).where(eq(cities.assignedTeamId, team.id));
+
+    // This team's own exclusively-owned rows.
+    await tx.delete(inspections).where(eq(inspections.challengerTeamId, team.id));
+    await tx.delete(constructedBuildings).where(eq(constructedBuildings.teamId, team.id)); // cascades building_bonus_uses
+    await tx.delete(bankPurchases).where(eq(bankPurchases.teamId, team.id));
+    await tx.delete(scoutReports).where(eq(scoutReports.teamId, team.id));
+    await tx.delete(scoreSnapshots).where(eq(scoreSnapshots.teamId, team.id));
+    await tx.delete(cityBids).where(eq(cityBids.teamId, team.id));
+    await tx.delete(bids).where(eq(bids.teamId, team.id));
+
+    // Trades this team was party to, either side — see the tradeoff note
+    // above. Cascades trade_lines.
+    await tx.delete(trades).where(or(eq(trades.proposerTeamId, team.id), eq(trades.counterpartyTeamId, team.id)));
+
+    // Cascade automatically from teams, but explicit for clarity.
+    await tx.delete(teamInventoryTransactions).where(eq(teamInventoryTransactions.teamId, team.id));
+    await tx.delete(teamMembers).where(eq(teamMembers.teamId, team.id));
+
+    await tx.delete(teams).where(eq(teams.id, team.id));
+
+    await recordAudit(tx, {
+      eventId: params.eventId,
+      actorParticipantId: params.actorParticipantId,
+      reason: params.reason,
+      isOverride: true,
+      action: "team.deleted",
+      entityType: "team",
+      entityId: team.id,
+      beforeJson: team,
+    });
+
+    queueBroadcast({ eventId: params.eventId, type: "moderator.announcement", data: { deletedTeamId: team.id, deletedTeamName: team.name } });
+
+    return { teamId: team.id };
   });
 }

@@ -31,17 +31,25 @@ export default function ModeratorTeamsPage({ params }: { params: Promise<{ event
     if (connected) refresh();
   }, [connected, refresh]);
 
-  async function call(path: string, body?: unknown) {
+  async function call(path: string, body?: unknown, method: "POST" | "DELETE" = "POST") {
     setBusy(true);
     setMessage(null);
     try {
-      const res = await fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
+      const res = await fetch(path, { method, headers: { "content-type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) setMessage(json.message ?? `Error (${res.status})`);
       else refresh();
     } finally {
       setBusy(false);
     }
+  }
+
+  function deleteTeam(teamId: string, teamName: string) {
+    const reason = window.prompt(
+      `Permanently delete team "${teamName}"? This cannot be undone (though the audit log keeps a record). Enter a reason to confirm, or cancel:`,
+    );
+    if (!reason) return;
+    call(`/api/events/${eventId}/teams/${teamId}`, { reason }, "DELETE");
   }
 
   if (!overview) return <PageFrame><p className="text-[#F1EBB5]">Loading…</p></PageFrame>;
@@ -87,6 +95,9 @@ export default function ModeratorTeamsPage({ params }: { params: Promise<{ event
                     Reinstate
                   </WoodButton>
                 )}
+                <WoodButton variant="danger" disabled={busy} onClick={() => deleteTeam(t.id, t.name)}>
+                  🗑 Delete
+                </WoodButton>
               </div>
             </div>
           ))}
