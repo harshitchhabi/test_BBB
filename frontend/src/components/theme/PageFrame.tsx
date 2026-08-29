@@ -7,14 +7,17 @@
 // main-background.png panel floating in the center holding the page's
 // actual content.
 //
-// The back button (top-left, cart_page/button.png — the exact image the
-// legacy cart page used for its own "back to rules" link) was added after
-// a rehearsal user got stuck several screens deep with no way back. It
-// deliberately always goes to "/" (the sign-in/home page), not
-// router.back() — browser history back was confusing since it could land
-// on a half-loaded intermediate state or a different event entirely;
-// going home is the one destination that always makes sense from any
-// screen in the app.
+// The back button (top-left) was added after a rehearsal user got stuck
+// several screens deep with no way back. It deliberately always goes to
+// "/" (the sign-in/home page), not router.back() — browser history back
+// was confusing since it could land on a half-loaded intermediate state
+// or a different event entirely; going home is the one destination that
+// always makes sense from any screen in the app. This is a plain text
+// button, not the legacy's cart_page/button.png — that image has "BACK
+// TO RULES" baked into its pixels (it was the cart page's own link back
+// to the rules screen originally), which was actively misleading once
+// reused here for a different destination and a caption no CSS/props can
+// change.
 export function PageFrame({ children }: { children: React.ReactNode }) {
   return (
     <div
@@ -30,8 +33,11 @@ export function PageFrame({ children }: { children: React.ReactNode }) {
           backgroundPosition: "center",
         }}
       >
-        <a href="/" className="self-start mb-2 opacity-90 hover:opacity-100" aria-label="Back to home">
-          <img src="/assets/images/cart_page/button.png" alt="Back to home" className="h-9" />
+        <a
+          href="/"
+          className="self-start mb-2 px-3 py-1.5 rounded text-sm bg-[#463d36] text-[#F1EBB5] hover:bg-[#62574e] shadow"
+        >
+          ← Back to Login
         </a>
         {children}
       </div>

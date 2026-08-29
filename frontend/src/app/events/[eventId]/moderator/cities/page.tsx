@@ -6,7 +6,7 @@ import { useEventSocket } from "@/lib/use-event-socket";
 import { ModNav } from "../mod-nav";
 import { PageFrame } from "@/components/theme/PageFrame";
 import { HeaderBanner } from "@/components/theme/HeaderBanner";
-import { Panel, WoodButton } from "@/components/theme/Panel";
+import { Panel, PanelTitle, WoodButton } from "@/components/theme/Panel";
 
 // Section 7.9 Stage 3 controls: start city, accept/close bid, assign last
 // city, reveal multipliers. Score & Reveal folds into this screen too —
@@ -20,6 +20,7 @@ export default function ModeratorCitiesPage({ params }: { params: Promise<{ even
   const [auctions, setAuctions] = useState<any[]>([]);
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [standings, setStandings] = useState<any[] | null>(null);
 
   const refresh = useCallback(async () => {
     const ov = await fetch(`/api/events/${eventId}/overview`).then((r) => r.json());
@@ -28,6 +29,10 @@ export default function ModeratorCitiesPage({ params }: { params: Promise<{ even
     setCities(c.cities);
     const a = await fetch(`/api/events/${eventId}/city-auctions/list`).then((r) => r.json());
     setAuctions(a.auctions);
+    if (ov.event?.status === "completed") {
+      const s = await fetch(`/api/events/${eventId}/exports/standings?format=json`).then((r) => r.json());
+      setStandings(s.standings ?? []);
+    }
   }, [eventId]);
 
   useEffect(() => {
@@ -71,6 +76,40 @@ export default function ModeratorCitiesPage({ params }: { params: Promise<{ even
       <WoodButton variant="danger" disabled={busy} onClick={() => call(`/api/events/${eventId}/cities/reveal`)} className="mb-4 text-lg">
         Reveal all multipliers & finalize scores
       </WoodButton>
+
+      {standings && standings.length > 0 && (
+        <Panel className="w-full mb-4 border-2 border-yellow-400">
+          <PanelTitle>🏆 FINAL RESULTS</PanelTitle>
+          <div className="overflow-x-auto">
+            <table className="w-full text-white text-sm md:text-base">
+              <thead>
+                <tr className="text-yellow-300 text-left">
+                  <th className="pr-4 py-1">Place</th>
+                  <th className="pr-4 py-1">Team</th>
+                  <th className="pr-4 py-1 text-right">Building</th>
+                  <th className="pr-4 py-1 text-right">Bonus</th>
+                  <th className="pr-4 py-1 text-right">Leftover</th>
+                  <th className="pr-4 py-1 text-right">City ×</th>
+                  <th className="pr-4 py-1 text-right">Final score</th>
+                </tr>
+              </thead>
+              <tbody>
+                {standings.map((s: any) => (
+                  <tr key={s.place} className="odd:bg-[#764A21]/30">
+                    <td className="pr-4 py-1 font-bold">#{s.place}</td>
+                    <td className="pr-4 py-1">{s.team}</td>
+                    <td className="pr-4 py-1 text-right">{s.buildingPoints}</td>
+                    <td className="pr-4 py-1 text-right">{s.bonusPoints}</td>
+                    <td className="pr-4 py-1 text-right">{s.leftoverPoints}</td>
+                    <td className="pr-4 py-1 text-right">×{s.cityMultiplier}</td>
+                    <td className="pr-4 py-1 text-right font-bold text-yellow-300">{s.finalScore}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Panel>
+      )}
 
       <Panel className="w-full">
         <div className="space-y-2">
