@@ -18,6 +18,13 @@
 // to the rules screen originally), which was actively misleading once
 // reused here for a different destination and a caption no CSS/props can
 // change.
+//
+// It links to "/?stay=1", not bare "/": the home page auto-redirects a
+// signed-in visitor straight back into the one event on this server (so
+// nobody has to paste an event id), which otherwise turns this button
+// into an infinite bounce — click it and you're immediately shoved right
+// back where you started. ?stay=1 tells the home page to actually show
+// itself instead.
 export function PageFrame({ children }: { children: React.ReactNode }) {
   return (
     <div
@@ -34,7 +41,7 @@ export function PageFrame({ children }: { children: React.ReactNode }) {
         }}
       >
         <a
-          href="/"
+          href="/?stay=1"
           className="self-start mb-2 px-3 py-1.5 rounded text-sm bg-[#463d36] text-[#F1EBB5] hover:bg-[#62574e] shadow"
         >
           ← Back to Login

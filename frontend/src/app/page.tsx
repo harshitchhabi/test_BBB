@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useSession, signIn, signOut } from "next-auth/react";
 
 // Hero styling ported from the legacy repo's src/app/page.tsx (bg.png
@@ -11,9 +11,29 @@ import { useSession, signIn, signOut } from "next-auth/react";
 // ever one event to go to — nobody should ever have to type or paste an
 // event id. Once signed in, we fetch the single event that exists on this
 // server and jump straight there.
+//
+// The one exception: every screen's "Back to Login" button also points
+// here, and it needs to actually land on this page instead of bouncing
+// straight back into the event it's trying to leave. It links to
+// "/?stay=1" for exactly that reason — ?stay=1 skips the auto-redirect
+// below so a signed-in user can genuinely get back to this screen (to
+// switch accounts, sign out, or just see it) instead of the back button
+// looking broken.
+// useSearchParams() (for reading ?stay=1) requires a Suspense boundary
+// around whatever uses it, or `next build` fails to prerender this page.
 export default function Home() {
+  return (
+    <Suspense>
+      <HomeContent />
+    </Suspense>
+  );
+}
+
+function HomeContent() {
   const { data: session, status } = useSession();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const stay = searchParams.get("stay") === "1";
   const [eventId, setEventId] = useState<string | null>(null);
   const [eventName, setEventName] = useState<string | null>(null);
   const [notFound, setNotFound] = useState(false);
@@ -33,10 +53,10 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (status === "authenticated" && eventId) {
+    if (status === "authenticated" && eventId && !stay) {
       router.replace(`/events/${eventId}`);
     }
-  }, [status, eventId, router]);
+  }, [status, eventId, stay, router]);
 
   return (
     <div
@@ -73,6 +93,14 @@ export default function Home() {
         {status === "unauthenticated" && !notFound && (
           <button onClick={() => signIn("google")} className="bg-[#B17E41] px-6 py-3 text-black text-lg font-bold minecraft-font shadow-lg">
             Register Now →
+          </button>
+        )}
+        {status === "authenticated" && eventId && stay && (
+          <button
+            onClick={() => router.push(`/events/${eventId}`)}
+            className="bg-[#B17E41] px-6 py-3 text-black text-lg font-bold minecraft-font shadow-lg"
+          >
+            Continue to event →
           </button>
         )}
         {status === "authenticated" && !eventId && !notFound && <p className="text-white">Loading event…</p>}
