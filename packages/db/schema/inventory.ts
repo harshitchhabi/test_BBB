@@ -23,7 +23,7 @@ export const teamInventoryTransactions = pgTable("team_inventory_transactions", 
   relatedEntityType: text("related_entity_type"),
   relatedEntityId: uuid("related_entity_id"),
   createdBy: uuid("created_by").references(() => participants.id),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
 export const trades = pgTable("trades", {
@@ -44,9 +44,9 @@ export const trades = pgTable("trades", {
   binding: boolean("binding").notNull().default(false),
   moderatorId: uuid("moderator_id").references(() => participants.id),
   tradeNumber: integer("trade_number").notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  registeredAt: timestamp("registered_at"),
-  completedAt: timestamp("completed_at"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  registeredAt: timestamp("registered_at", { withTimezone: true }),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
 });
 
 export const tradeLines = pgTable("trade_lines", {
@@ -84,5 +84,5 @@ export const bankPurchases = pgTable("bank_purchases", {
     .default("auction_tokens"),
   approvedBy: uuid("approved_by").references(() => participants.id),
   status: bankPurchaseStatusEnum("status").notNull().default("requested"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });

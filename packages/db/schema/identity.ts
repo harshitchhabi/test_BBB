@@ -10,7 +10,7 @@ export const participants = pgTable("participants", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
   email: text("email").notNull().unique(),
-  createdAt: timestamp("created_at").defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
 });
 
 export const events = pgTable("events", {
@@ -29,9 +29,9 @@ export const events = pgTable("events", {
   // first," which is the loophole this column exists to close for events
   // that do set it.
   createdBy: uuid("created_by").references(() => participants.id),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  startedAt: timestamp("started_at"),
-  completedAt: timestamp("completed_at"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  startedAt: timestamp("started_at", { withTimezone: true }),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
 });
 
 // event_settings: every value here is the recommended default from Section
@@ -77,7 +77,7 @@ export const eventStaff = pgTable(
       .notNull()
       .references(() => participants.id, { onDelete: "cascade" }),
     role: eventStaffRoleEnum("role").notNull().default("moderator"),
-    createdAt: timestamp("created_at").defaultNow().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => ({
     eventParticipantUnique: uniqueIndex("event_staff_event_participant_unique").on(
@@ -105,7 +105,7 @@ export const teams = pgTable(
     scoutReportCount: integer("scout_report_count").notNull().default(0),
     inspectionCount: integer("inspection_count").notNull().default(0),
     status: teamStatusEnum("status").notNull().default("active"),
-    createdAt: timestamp("created_at").defaultNow().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => ({
     eventCodeUnique: uniqueIndex("teams_event_code_unique").on(table.eventId, table.code),
@@ -133,7 +133,7 @@ export const teamMembers = pgTable(
       .notNull()
       .references(() => participants.id, { onDelete: "cascade" }),
     role: teamMemberRoleEnum("role").notNull().default("member"),
-    joinedAt: timestamp("joined_at").defaultNow().notNull(),
+    joinedAt: timestamp("joined_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => ({
     teamParticipantUnique: uniqueIndex("team_members_team_participant_unique").on(

@@ -14,8 +14,8 @@ export const auctionRounds = pgTable("auction_rounds", {
   sequence: integer("sequence").notNull(),
   status: auctionRoundStatusEnum("status").notNull().default("planned"),
   marketShockCardId: uuid("market_shock_card_id").references(() => marketShockCards.id),
-  startedAt: timestamp("started_at"),
-  closedAt: timestamp("closed_at"),
+  startedAt: timestamp("started_at", { withTimezone: true }),
+  closedAt: timestamp("closed_at", { withTimezone: true }),
 });
 
 export const auctionLots = pgTable("auction_lots", {
@@ -36,8 +36,8 @@ export const auctionLots = pgTable("auction_lots", {
   openingBid: integer("opening_bid").notNull(),
   minimumRaise: integer("minimum_raise").notNull(),
   status: auctionLotStatusEnum("status").notNull().default("pending"),
-  opensAt: timestamp("opens_at"),
-  closesAt: timestamp("closes_at"),
+  opensAt: timestamp("opens_at", { withTimezone: true }),
+  closesAt: timestamp("closes_at", { withTimezone: true }),
   winningBidId: uuid("winning_bid_id"),
   winnerTeamId: uuid("winner_team_id").references(() => teams.id),
 });
@@ -56,5 +56,5 @@ export const bids = pgTable("bids", {
   amount: integer("amount").notNull(),
   status: bidStatusEnum("status").notNull(),
   rejectionReason: text("rejection_reason"),
-  submittedAt: timestamp("submitted_at").defaultNow().notNull(),
+  submittedAt: timestamp("submitted_at", { withTimezone: true }).defaultNow().notNull(),
 });

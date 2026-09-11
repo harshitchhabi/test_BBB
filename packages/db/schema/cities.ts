@@ -56,7 +56,7 @@ export const scoutReports = pgTable("scout_reports", {
   // least 3.0" / "below 2.5".
   clueType: text("clue_type").notNull(),
   clueValue: text("clue_value").notNull(),
-  purchasedAt: timestamp("purchased_at").defaultNow().notNull(),
+  purchasedAt: timestamp("purchased_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
 export const cityAuctions = pgTable("city_auctions", {
@@ -70,8 +70,8 @@ export const cityAuctions = pgTable("city_auctions", {
   status: cityAuctionStatusEnum("status").notNull().default("pending"),
   openingBid: integer("opening_bid").notNull(),
   minimumRaise: integer("minimum_raise").notNull(),
-  opensAt: timestamp("opens_at"),
-  closesAt: timestamp("closes_at"),
+  opensAt: timestamp("opens_at", { withTimezone: true }),
+  closesAt: timestamp("closes_at", { withTimezone: true }),
   winnerTeamId: uuid("winner_team_id").references(() => teams.id),
   winningBidId: uuid("winning_bid_id"),
 });
@@ -88,5 +88,5 @@ export const cityBids = pgTable("city_bids", {
   cityWalletUsed: integer("city_wallet_used").notNull(),
   auctionTokensUsed: integer("auction_tokens_used").notNull(),
   status: cityBidStatusEnum("status").notNull(),
-  submittedAt: timestamp("submitted_at").defaultNow().notNull(),
+  submittedAt: timestamp("submitted_at", { withTimezone: true }).defaultNow().notNull(),
 });

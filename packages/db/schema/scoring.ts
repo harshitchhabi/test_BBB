@@ -19,7 +19,7 @@ export const scoreSnapshots = pgTable("score_snapshots", {
   rank: integer("rank"),
   tiebreakerRank: integer("tiebreaker_rank"),
   calculationJson: jsonb("calculation_json").notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
 // audit_log: every moderator override, plus every automated state
@@ -41,5 +41,5 @@ export const auditLog = pgTable("audit_log", {
   reason: text("reason"),
   beforeJson: jsonb("before_json"),
   afterJson: jsonb("after_json"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });

@@ -43,9 +43,9 @@ export const constructedBuildings = pgTable("constructed_buildings", {
   luxuryBonus: integer("luxury_bonus").notNull().default(0),
   landmarkBonus: integer("landmark_bonus").notNull().default(0),
   status: constructedBuildingStatusEnum("status").notNull().default("approved"),
-  builtAt: timestamp("built_at").defaultNow().notNull(),
+  builtAt: timestamp("built_at", { withTimezone: true }).defaultNow().notNull(),
   verifiedBy: uuid("verified_by").references(() => participants.id),
-  voidedAt: timestamp("voided_at"),
+  voidedAt: timestamp("voided_at", { withTimezone: true }),
   voidedReason: text("voided_reason"),
 });
 
@@ -76,6 +76,6 @@ export const inspections = pgTable("inspections", {
     .default("auction_tokens"),
   result: inspectionResultEnum("result").notNull().default("cancelled"),
   resolvedBy: uuid("resolved_by").references(() => participants.id),
-  resolvedAt: timestamp("resolved_at"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
+  resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
