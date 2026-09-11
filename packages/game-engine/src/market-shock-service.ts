@@ -1,4 +1,4 @@
-import { eq, and, sql } from "db";
+import { eq, and, sql, inArray } from "db";
 import { marketShockCards, auctionRounds, materialTypes, materialLots, buildingRecipes, teams } from "db/schema";
 import type { Tx } from "./tx";
 import { recordAudit } from "./audit";
@@ -119,7 +119,7 @@ export async function applyGlobalEffect(
     const recipes = await tx
       .select()
       .from(buildingRecipes)
-      .where(and(eq(buildingRecipes.eventId, eventId), sql`${buildingRecipes.key} = ANY(${effect.recipeKeys})`));
+      .where(and(eq(buildingRecipes.eventId, eventId), inArray(buildingRecipes.key, effect.recipeKeys)));
     for (const recipe of recipes) {
       await tx
         .update(buildingRecipes)
@@ -177,7 +177,7 @@ export async function applyGlobalEffect(
         and(
           eq(materialTypes.eventId, eventId),
           eq(materialLots.status, "bank_stock"),
-          sql`${materialTypes.key} = ANY(${effect.priorityMaterialKeys})`,
+          inArray(materialTypes.key, effect.priorityMaterialKeys),
         ),
       )
       .limit(1);
