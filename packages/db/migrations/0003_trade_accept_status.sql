@@ -1,0 +1,1 @@
+ALTER TYPE "public"."trade_status" ADD VALUE 'accepted' BEFORE 'registered';

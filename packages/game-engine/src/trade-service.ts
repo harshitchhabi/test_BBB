@@ -4,17 +4,23 @@ import { GameError } from "./errors";
 import { recordAudit } from "./audit";
 import { runInTransaction, type Tx } from "./tx";
 import { getQuantityForMaterial } from "./inventory-service";
-import { assertTeamLeaderTx, assertStaffTx } from "./team-service";
+import { assertTeamLeaderTx, assertStaffTx, isTeamLeaderTx } from "./team-service";
 
 // Section 6.4 workflow and rulebook Stage 2 "Trading": swaps are free,
 // capped at 4 completed trades per team, and only a moderator-registered
-// trade ("pink slip") is binding — a handshake deal is a real-world
-// agreement the portal deliberately never represents as system state,
-// since nothing here would be there to enforce it anyway. So the flow
-// modeled is: a team leader proposes -> a moderator registers (this is the
-// point it becomes a "pink slip") -> a moderator completes it (atomic
-// ledger movement for both sides) -> or a moderator rejects/cancels it at
-// any point before completion.
+// trade ("pink slip") is binding. The flow is: a team leader proposes ->
+// the COUNTERPARTY's leader must accept before a moderator can do
+// anything with it -> a moderator registers the accepted trade (this is
+// the point it becomes a "pink slip") -> a moderator completes it (atomic
+// ledger movement for both sides) -> or either side declines/a moderator
+// rejects/cancels it at any point before completion.
+//
+// The counterparty-accept step exists because a trade moves real
+// inventory for both teams — without it, a moderator alone could
+// register and complete a trade the counterparty never actually agreed
+// to, which is a real loophole for a "friendly" moderator to exploit or
+// simply a mistake to make under time pressure with many trades in
+// flight at once.
 
 export interface TradeLineInput {
   fromTeamId: string;
@@ -100,11 +106,74 @@ async function loadTradeForUpdate(tx: Tx, eventId: string, tradeId: string) {
   return trade;
 }
 
+// The counterparty's leader agreeing to the exact terms proposed. Only
+// they can do this — not the proposer, not staff — since this is the
+// step that stands in for the other team's real-world consent.
+export async function acceptTrade(params: { eventId: string; tradeId: string; acceptingParticipantId: string }) {
+  return runInTransaction(async (tx, queueBroadcast) => {
+    const trade = await loadTradeForUpdate(tx, params.eventId, params.tradeId);
+    if (trade.status !== "submitted") throw new GameError("conflict", "This trade is no longer waiting for a response.");
+    await assertTeamLeaderTx(tx, params.eventId, trade.counterpartyTeamId, params.acceptingParticipantId);
+
+    const [updated] = await tx.update(trades).set({ status: "accepted" }).where(eq(trades.id, trade.id)).returning();
+
+    await recordAudit(tx, {
+      eventId: params.eventId,
+      actorParticipantId: params.acceptingParticipantId,
+      action: "trade.accepted",
+      entityType: "trade",
+      entityId: trade.id,
+      afterJson: updated,
+    });
+
+    queueBroadcast({ eventId: params.eventId, type: "trade.changed", data: updated });
+    return updated;
+  });
+}
+
+// Either side can decline a trade that's still just a proposal — the
+// proposer withdrawing their own offer, or the counterparty turning it
+// down. Once accepted, only a moderator's reject/cancel can undo it,
+// since by then both teams have already committed to the terms.
+export async function declineTrade(params: { eventId: string; tradeId: string; decliningParticipantId: string }) {
+  return runInTransaction(async (tx, queueBroadcast) => {
+    const trade = await loadTradeForUpdate(tx, params.eventId, params.tradeId);
+    if (trade.status !== "submitted") throw new GameError("conflict", "This trade is no longer waiting for a response.");
+
+    const isProposer = await isTeamLeaderTx(tx, params.eventId, trade.proposerTeamId, params.decliningParticipantId);
+    const isCounterparty = await isTeamLeaderTx(tx, params.eventId, trade.counterpartyTeamId, params.decliningParticipantId);
+    if (!isProposer && !isCounterparty) {
+      throw new GameError("forbidden", "Only one of the two teams in this trade can decline it.");
+    }
+
+    const [updated] = await tx.update(trades).set({ status: "rejected" }).where(eq(trades.id, trade.id)).returning();
+
+    await recordAudit(tx, {
+      eventId: params.eventId,
+      actorParticipantId: params.decliningParticipantId,
+      action: "trade.declined",
+      entityType: "trade",
+      entityId: trade.id,
+      afterJson: updated,
+    });
+
+    queueBroadcast({ eventId: params.eventId, type: "trade.changed", data: updated });
+    return updated;
+  });
+}
+
 export async function registerTrade(params: { eventId: string; tradeId: string; moderatorParticipantId: string }) {
   return runInTransaction(async (tx, queueBroadcast) => {
     await assertStaffTx(tx, params.eventId, params.moderatorParticipantId);
     const trade = await loadTradeForUpdate(tx, params.eventId, params.tradeId);
-    if (trade.status !== "submitted") throw new GameError("conflict", "Only a submitted trade can be registered.");
+    if (trade.status !== "accepted") {
+      throw new GameError(
+        "conflict",
+        trade.status === "submitted"
+          ? "The counterparty hasn't accepted this trade yet — it can't be registered until they do."
+          : "Only an accepted trade can be registered.",
+      );
+    }
 
     const [updated] = await tx
       .update(trades)

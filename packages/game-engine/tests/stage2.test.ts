@@ -152,6 +152,76 @@ describe("Authorization", () => {
 });
 
 describe("Trading", () => {
+  it("refuses to register a trade the counterparty hasn't accepted, and only the counterparty leader can accept it", async () => {
+    const { event, materials, moderator, teamA, teamB } = await createStage2Fixture(dbModule.db);
+    await grantInventory(dbModule.db, event.id, teamA.team.id, materials.bricks.id, 10);
+
+    const trade = await engine.proposeTrade({
+      eventId: event.id,
+      proposerTeamId: teamA.team.id,
+      counterpartyTeamId: teamB.team.id,
+      proposerParticipantId: teamA.leader.id,
+      lines: [{ fromTeamId: teamA.team.id, materialTypeId: materials.bricks.id, quantity: 5 }],
+    });
+
+    // A moderator can't jump straight to registering an unaccepted trade
+    // — this is the actual fix: previously nothing stopped this.
+    await expect(
+      engine.registerTrade({ eventId: event.id, tradeId: trade.id, moderatorParticipantId: moderator.id }),
+    ).rejects.toMatchObject({ code: "conflict" });
+
+    // Not even the proposer can accept their own offer on the
+    // counterparty's behalf.
+    await expect(
+      engine.acceptTrade({ eventId: event.id, tradeId: trade.id, acceptingParticipantId: teamA.leader.id }),
+    ).rejects.toMatchObject({ code: "forbidden" });
+
+    await engine.acceptTrade({ eventId: event.id, tradeId: trade.id, acceptingParticipantId: teamB.leader.id });
+    const registered = await engine.registerTrade({ eventId: event.id, tradeId: trade.id, moderatorParticipantId: moderator.id });
+    expect(registered.status).toBe("registered");
+  });
+
+  it("lets either side decline a still-pending trade, but not once it's accepted", async () => {
+    const { event, materials, teamA, teamB } = await createStage2Fixture(dbModule.db);
+    await grantInventory(dbModule.db, event.id, teamA.team.id, materials.bricks.id, 10);
+
+    // The counterparty can decline outright.
+    const declined = await engine.proposeTrade({
+      eventId: event.id,
+      proposerTeamId: teamA.team.id,
+      counterpartyTeamId: teamB.team.id,
+      proposerParticipantId: teamA.leader.id,
+      lines: [{ fromTeamId: teamA.team.id, materialTypeId: materials.bricks.id, quantity: 1 }],
+    });
+    const afterDecline = await engine.declineTrade({ eventId: event.id, tradeId: declined.id, decliningParticipantId: teamB.leader.id });
+    expect(afterDecline.status).toBe("rejected");
+
+    // The proposer can withdraw their own still-pending offer.
+    const withdrawn = await engine.proposeTrade({
+      eventId: event.id,
+      proposerTeamId: teamA.team.id,
+      counterpartyTeamId: teamB.team.id,
+      proposerParticipantId: teamA.leader.id,
+      lines: [{ fromTeamId: teamA.team.id, materialTypeId: materials.bricks.id, quantity: 1 }],
+    });
+    const afterWithdraw = await engine.declineTrade({ eventId: event.id, tradeId: withdrawn.id, decliningParticipantId: teamA.leader.id });
+    expect(afterWithdraw.status).toBe("rejected");
+
+    // Once accepted, declining is no longer available — only a
+    // moderator's reject/cancel can undo it from there.
+    const accepted = await engine.proposeTrade({
+      eventId: event.id,
+      proposerTeamId: teamA.team.id,
+      counterpartyTeamId: teamB.team.id,
+      proposerParticipantId: teamA.leader.id,
+      lines: [{ fromTeamId: teamA.team.id, materialTypeId: materials.bricks.id, quantity: 1 }],
+    });
+    await engine.acceptTrade({ eventId: event.id, tradeId: accepted.id, acceptingParticipantId: teamB.leader.id });
+    await expect(
+      engine.declineTrade({ eventId: event.id, tradeId: accepted.id, decliningParticipantId: teamB.leader.id }),
+    ).rejects.toMatchObject({ code: "conflict" });
+  });
+
   it("conserves total material quantity across both teams and enforces the trade limit", async () => {
     const { event, materials, moderator, teamA, teamB } = await createStage2Fixture(dbModule.db);
     await grantInventory(dbModule.db, event.id, teamA.team.id, materials.bricks.id, 100);
@@ -163,6 +233,7 @@ describe("Trading", () => {
       proposerParticipantId: teamA.leader.id,
       lines: [{ fromTeamId: teamA.team.id, materialTypeId: materials.bricks.id, quantity: 30 }],
     });
+    await engine.acceptTrade({ eventId: event.id, tradeId: trade.id, acceptingParticipantId: teamB.leader.id });
     await engine.registerTrade({ eventId: event.id, tradeId: trade.id, moderatorParticipantId: moderator.id });
     await engine.completeTrade({ eventId: event.id, tradeId: trade.id, moderatorParticipantId: moderator.id });
 
@@ -189,6 +260,7 @@ describe("Trading", () => {
         proposerParticipantId: teamA.leader.id,
         lines: [{ fromTeamId: teamA.team.id, materialTypeId: materials.bricks.id, quantity: 1 }],
       });
+      await engine.acceptTrade({ eventId: event.id, tradeId: t.id, acceptingParticipantId: teamB.leader.id });
       await engine.registerTrade({ eventId: event.id, tradeId: t.id, moderatorParticipantId: moderator.id });
       await engine.completeTrade({ eventId: event.id, tradeId: t.id, moderatorParticipantId: moderator.id });
     }
@@ -204,6 +276,7 @@ describe("Trading", () => {
       proposerParticipantId: teamA.leader.id,
       lines: [{ fromTeamId: teamA.team.id, materialTypeId: materials.bricks.id, quantity: 1 }],
     });
+    await engine.acceptTrade({ eventId: event.id, tradeId: fifthTrade.id, acceptingParticipantId: teamB.leader.id });
     await engine.registerTrade({ eventId: event.id, tradeId: fifthTrade.id, moderatorParticipantId: moderator.id });
     await expect(
       engine.completeTrade({ eventId: event.id, tradeId: fifthTrade.id, moderatorParticipantId: moderator.id }),

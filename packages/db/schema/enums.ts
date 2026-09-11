@@ -74,6 +74,7 @@ export const inventoryReasonEnum = pgEnum("inventory_reason", [
 export const tradeStatusEnum = pgEnum("trade_status", [
   "draft",
   "submitted",
+  "accepted",
   "registered",
   "completed",
   "cancelled",

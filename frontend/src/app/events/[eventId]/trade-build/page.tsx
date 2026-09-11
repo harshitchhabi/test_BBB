@@ -33,18 +33,27 @@ export default function TradeBuildPage({ params }: { params: Promise<{ eventId: 
 
   const refresh = useCallback(async () => {
     try {
-      const ov = await fetchJson<any>(`/api/events/${eventId}/overview`);
+      // These four don't depend on each other — firing them together
+      // instead of one-at-a-time cuts this screen's refresh time to
+      // roughly its slowest single request instead of the sum of all
+      // four, which matters a lot given this refresh reruns on every
+      // WebSocket broadcast (any team's bid, trade, or build).
+      const [ov, materials, rec, tr] = await Promise.all([
+        fetchJson<any>(`/api/events/${eventId}/overview`),
+        fetchJson<any>(`/api/events/${eventId}/bank-stock`),
+        fetchJson<any>(`/api/events/${eventId}/recipes`),
+        fetchJson<any>(`/api/events/${eventId}/trades/list`),
+      ]);
       setOverview(ov);
-      const materials = await fetchJson<any>(`/api/events/${eventId}/bank-stock`);
       setBankStock(materials.stock);
-      const rec = await fetchJson<any>(`/api/events/${eventId}/recipes`);
       setRecipes(rec.recipes);
-      const tr = await fetchJson<any>(`/api/events/${eventId}/trades/list`);
       setMyTrades(tr.trades);
       if (ov.myTeam) {
-        const inv = await fetchJson<any>(`/api/events/${eventId}/teams/${ov.myTeam.id}/inventory`);
+        const [inv, bld] = await Promise.all([
+          fetchJson<any>(`/api/events/${eventId}/teams/${ov.myTeam.id}/inventory`),
+          fetchJson<any>(`/api/events/${eventId}/buildings/list?teamId=${ov.myTeam.id}`),
+        ]);
         setInventory(inv.inventory);
-        const bld = await fetchJson<any>(`/api/events/${eventId}/buildings/list?teamId=${ov.myTeam.id}`);
         setMyBuildings(bld.buildings);
       }
       setLoadError(null);
@@ -82,6 +91,14 @@ export default function TradeBuildPage({ params }: { params: Promise<{ eventId: 
     }
   }
 
+  async function respondToTrade(tradeId: string, action: "accept" | "decline") {
+    setMessage(null);
+    const res = await fetch(`/api/events/${eventId}/trades/${tradeId}/${action}`, { method: "POST" });
+    const body = await res.json();
+    if (!res.ok) setMessage(body.message);
+    else refresh();
+  }
+
   async function construct(recipeId: string, bonuses: Record<string, boolean>) {
     if (!overview?.myTeam) return;
     setMessage(null);
@@ -107,6 +124,10 @@ export default function TradeBuildPage({ params }: { params: Promise<{ eventId: 
   }
 
   const otherTeams = overview.teams.filter((t: any) => t.id !== overview.myTeam.id);
+  // Trades still just a proposal, involving my team either way — the
+  // counterparty needs to actually agree before anything moves, and the
+  // proposer can withdraw their own offer while it's still pending.
+  const pendingTrades = myTrades.filter((t: any) => t.status === "submitted");
 
   return (
     <PageFrame>
@@ -161,6 +182,40 @@ export default function TradeBuildPage({ params }: { params: Promise<{ eventId: 
             </div>
           ) : (
             <p className="text-[#F1EBB5] mb-4">Only your team leader can propose a trade.</p>
+          )}
+
+          {pendingTrades.length > 0 && overview.myRole === "leader" && (
+            <div className="mb-4">
+              <h3 className="text-yellow-300 font-bold mb-2">Waiting on a response</h3>
+              <div className="space-y-2">
+                {pendingTrades.map((t: any) => {
+                  const isCounterparty = t.counterpartyTeamId === overview.myTeam.id;
+                  return (
+                    <div key={t.id} className="bg-[#764A21]/40 rounded-lg p-3 text-sm text-white">
+                      <div className="font-bold">
+                        #{t.tradeNumber}: {t.proposerTeamName} ↔ {t.counterpartyTeamName}
+                      </div>
+                      <div className="text-white/80 mt-1">
+                        {t.lines.map((l: any, i: number) => (
+                          <div key={i}>{l.fromTeamName} gives {l.quantity} {l.material?.name}</div>
+                        ))}
+                      </div>
+                      {isCounterparty ? (
+                        <div className="flex gap-2 mt-2">
+                          <WoodButton variant="primary" onClick={() => respondToTrade(t.id, "accept")}>Accept</WoodButton>
+                          <WoodButton variant="danger" onClick={() => respondToTrade(t.id, "decline")}>Decline</WoodButton>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2 mt-2">
+                          <span className="text-yellow-300">Waiting for {t.counterpartyTeamName} to respond.</span>
+                          <WoodButton onClick={() => respondToTrade(t.id, "decline")}>Withdraw offer</WoodButton>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           )}
 
           <h3 className="text-yellow-300 font-bold mb-2">History</h3>
