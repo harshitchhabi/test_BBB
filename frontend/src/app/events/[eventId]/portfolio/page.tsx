@@ -27,15 +27,18 @@ export default function PortfolioPage({ params }: { params: Promise<{ eventId: s
       setOverview(ov);
       if (!ov.myTeam) return;
 
-      const bld = await fetchJson<any>(`/api/events/${eventId}/buildings/list?teamId=${ov.myTeam.id}`);
+      const [bld, scoreData] = await Promise.all([
+        fetchJson<any>(`/api/events/${eventId}/buildings/list?teamId=${ov.myTeam.id}`),
+        ov.event.status === "completed"
+          ? fetchJson<any>(`/api/events/${eventId}/scoreboard`)
+          : fetchJson<any>(`/api/events/${eventId}/teams/${ov.myTeam.id}/pre-reveal-score`),
+      ]);
       setBuildings(bld.buildings);
 
       if (ov.event.status === "completed") {
-        const board = await fetchJson<any>(`/api/events/${eventId}/scoreboard`);
-        setStanding(board.standings.find((s: any) => s.teamId === ov.myTeam.id) ?? null);
+        setStanding(scoreData.standings.find((s: any) => s.teamId === ov.myTeam.id) ?? null);
       } else {
-        const pre = await fetchJson<any>(`/api/events/${eventId}/teams/${ov.myTeam.id}/pre-reveal-score`);
-        setPreReveal(pre);
+        setPreReveal(scoreData);
       }
       setLoadError(null);
     } catch (err) {

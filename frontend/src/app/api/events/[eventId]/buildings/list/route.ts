@@ -1,5 +1,5 @@
 import { NextResponse, NextRequest } from "next/server";
-import { db, eq, and } from "db";
+import { db, eq, and, inArray } from "db";
 import { constructedBuildings, buildingRecipes, teams, buildingBonusUses } from "db/schema";
 import { getParticipantContext } from "game-engine";
 import { isStaff } from "common";
@@ -31,11 +31,26 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ even
     const teamRows = await db.select({ id: teams.id, name: teams.name }).from(teams).where(eq(teams.eventId, eventId));
     const teamNameById = new Map(teamRows.map((t) => [t.id, t.name]));
 
-    const result = [];
-    for (const b of buildings) {
-      const bonusUses = await db.select().from(buildingBonusUses).where(eq(buildingBonusUses.constructedBuildingId, b.id));
-      result.push({ ...b, recipeName: recipeById.get(b.recipeId)?.name, teamName: teamNameById.get(b.teamId), bonusUses });
+    // One query for every building's bonus uses instead of one query per
+    // building — see the identical fix on trades/list and
+    // city-auctions/list.
+    const buildingIds = buildings.map((b) => b.id);
+    const allBonusUses = buildingIds.length
+      ? await db.select().from(buildingBonusUses).where(inArray(buildingBonusUses.constructedBuildingId, buildingIds))
+      : [];
+    const bonusUsesByBuildingId = new Map<string, typeof allBonusUses>();
+    for (const use of allBonusUses) {
+      const existing = bonusUsesByBuildingId.get(use.constructedBuildingId);
+      if (existing) existing.push(use);
+      else bonusUsesByBuildingId.set(use.constructedBuildingId, [use]);
     }
+
+    const result = buildings.map((b) => ({
+      ...b,
+      recipeName: recipeById.get(b.recipeId)?.name,
+      teamName: teamNameById.get(b.teamId),
+      bonusUses: bonusUsesByBuildingId.get(b.id) ?? [],
+    }));
 
     return NextResponse.json({ buildings: result });
   } catch (err) {

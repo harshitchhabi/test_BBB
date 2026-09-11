@@ -26,11 +26,15 @@ export default function CityAuctionPage({ params }: { params: Promise<{ eventId:
 
   const refresh = useCallback(async () => {
     try {
-      const ov = await fetchJson<any>(`/api/events/${eventId}/overview`);
+      // Independent requests fired together — see the same note on the
+      // Trade & Build screen's refresh().
+      const [ov, c, a] = await Promise.all([
+        fetchJson<any>(`/api/events/${eventId}/overview`),
+        fetchJson<any>(`/api/events/${eventId}/cities`),
+        fetchJson<any>(`/api/events/${eventId}/city-auctions/list`),
+      ]);
       setOverview(ov);
-      const c = await fetchJson<any>(`/api/events/${eventId}/cities`);
       setCities(c.cities);
-      const a = await fetchJson<any>(`/api/events/${eventId}/city-auctions/list`);
       setAuctions(a.auctions);
       if (ov.myTeam) {
         const sr = await fetchJson<any>(`/api/events/${eventId}/teams/${ov.myTeam.id}/scout-reports`);

@@ -22,9 +22,11 @@ export default function ModeratorBuildingsPage({ params }: { params: Promise<{ e
 
   const refresh = useCallback(async () => {
     try {
-      const b = await fetchJson<any>(`/api/events/${eventId}/buildings/list`);
+      const [b, i] = await Promise.all([
+        fetchJson<any>(`/api/events/${eventId}/buildings/list`),
+        fetchJson<any>(`/api/events/${eventId}/inspections/list`),
+      ]);
       setBuildings(b.buildings);
-      const i = await fetchJson<any>(`/api/events/${eventId}/inspections/list`);
       setInspections(i.inspections);
       setLoadError(null);
     } catch (err) {

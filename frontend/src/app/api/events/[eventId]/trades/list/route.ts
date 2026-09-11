@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { db, eq, or } from "db";
+import { db, eq, or, inArray } from "db";
 import { trades, tradeLines, teams, materialTypes } from "db/schema";
 import { getParticipantContext } from "game-engine";
 import { isStaff } from "common";
@@ -30,16 +30,30 @@ export async function GET(_req: Request, { params }: { params: Promise<{ eventId
     const materialRows = await db.select({ id: materialTypes.id, key: materialTypes.key, name: materialTypes.name }).from(materialTypes).where(eq(materialTypes.eventId, eventId));
     const materialById = new Map(materialRows.map((m) => [m.id, m]));
 
-    const result = [];
-    for (const trade of eventTrades) {
-      const lines = await db.select().from(tradeLines).where(eq(tradeLines.tradeId, trade.id));
-      result.push({
-        ...trade,
-        proposerTeamName: teamNameById.get(trade.proposerTeamId),
-        counterpartyTeamName: teamNameById.get(trade.counterpartyTeamId),
-        lines: lines.map((l) => ({ ...l, fromTeamName: teamNameById.get(l.fromTeamId), material: materialById.get(l.materialTypeId) })),
-      });
+    // One query for every trade's lines instead of one query per trade —
+    // matters once an event has built up dozens of trades across 25-30
+    // teams, since this route reruns on every trade-related refresh.
+    const tradeIds = eventTrades.map((t) => t.id);
+    const allLines = tradeIds.length
+      ? await db.select().from(tradeLines).where(inArray(tradeLines.tradeId, tradeIds))
+      : [];
+    const linesByTradeId = new Map<string, typeof allLines>();
+    for (const line of allLines) {
+      const existing = linesByTradeId.get(line.tradeId);
+      if (existing) existing.push(line);
+      else linesByTradeId.set(line.tradeId, [line]);
     }
+
+    const result = eventTrades.map((trade) => ({
+      ...trade,
+      proposerTeamName: teamNameById.get(trade.proposerTeamId),
+      counterpartyTeamName: teamNameById.get(trade.counterpartyTeamId),
+      lines: (linesByTradeId.get(trade.id) ?? []).map((l) => ({
+        ...l,
+        fromTeamName: teamNameById.get(l.fromTeamId),
+        material: materialById.get(l.materialTypeId),
+      })),
+    }));
 
     return NextResponse.json({ trades: result });
   } catch (err) {

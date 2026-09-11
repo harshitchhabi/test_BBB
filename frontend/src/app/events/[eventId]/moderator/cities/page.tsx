@@ -26,11 +26,13 @@ export default function ModeratorCitiesPage({ params }: { params: Promise<{ even
 
   const refresh = useCallback(async () => {
     try {
-      const ov = await fetchJson<any>(`/api/events/${eventId}/overview`);
+      const [ov, c, a] = await Promise.all([
+        fetchJson<any>(`/api/events/${eventId}/overview`),
+        fetchJson<any>(`/api/events/${eventId}/cities`),
+        fetchJson<any>(`/api/events/${eventId}/city-auctions/list`),
+      ]);
       setOverview(ov);
-      const c = await fetchJson<any>(`/api/events/${eventId}/cities`);
       setCities(c.cities);
-      const a = await fetchJson<any>(`/api/events/${eventId}/city-auctions/list`);
       setAuctions(a.auctions);
       if (ov.event?.status === "completed") {
         const s = await fetchJson<any>(`/api/events/${eventId}/exports/standings?format=json`);

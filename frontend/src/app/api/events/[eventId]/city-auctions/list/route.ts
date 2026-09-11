@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { db, eq, and } from "db";
+import { db, eq, and, inArray } from "db";
 import { cityAuctions, cityBids, cities, teams } from "db/schema";
 import { requireParticipant, apiErrorResponse } from "@/lib/api";
 
@@ -21,18 +21,22 @@ export async function GET(_req: Request, { params }: { params: Promise<{ eventId
     const teamRows = await db.select({ id: teams.id, name: teams.name }).from(teams).where(eq(teams.eventId, eventId));
     const teamNameById = new Map(teamRows.map((t) => [t.id, t.name]));
 
-    const result = [];
-    for (const auction of auctions) {
-      const [highest] = await db
-        .select()
-        .from(cityBids)
-        .where(and(eq(cityBids.cityAuctionId, auction.id), eq(cityBids.status, "winning")));
-      result.push({
+    // One query for every auction's current-highest bid instead of one
+    // query per auction — see the identical fix on trades/list.
+    const auctionIds = auctions.map((a) => a.id);
+    const highestBids = auctionIds.length
+      ? await db.select().from(cityBids).where(and(inArray(cityBids.cityAuctionId, auctionIds), eq(cityBids.status, "winning")))
+      : [];
+    const highestByAuctionId = new Map(highestBids.map((b) => [b.cityAuctionId, b]));
+
+    const result = auctions.map((auction) => {
+      const highest = highestByAuctionId.get(auction.id);
+      return {
         ...auction,
         city: cityById.get(auction.cityId),
         currentHighestBid: highest ? { amount: highest.amount, teamId: highest.teamId, teamName: teamNameById.get(highest.teamId) } : null,
-      });
-    }
+      };
+    });
 
     return NextResponse.json({ auctions: result });
   } catch (err) {
