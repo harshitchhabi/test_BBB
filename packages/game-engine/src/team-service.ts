@@ -20,6 +20,17 @@ export async function assertTeamLeaderTx(tx: Tx, eventId: string, teamId: string
   }
 }
 
+// Non-throwing counterpart to assertTeamLeaderTx, for callers that need
+// to check "is this one of two possible teams' leader" (e.g. either side
+// of a trade declining it) rather than a single required team.
+export async function isTeamLeaderTx(tx: Tx, eventId: string, teamId: string, participantId: string) {
+  const [membership] = await tx
+    .select({ role: teamMembers.role, teamId: teamMembers.teamId })
+    .from(teamMembers)
+    .where(and(eq(teamMembers.eventId, eventId), eq(teamMembers.participantId, participantId)));
+  return Boolean(membership && membership.teamId === teamId && membership.role === "leader");
+}
+
 // For moderator-only commands (round/lot control, trade register/reject/
 // complete, void building, resolve inspection). Section 4: "all rules are
 // evaluated server-side" — this is enforced inside the engine function
@@ -94,6 +105,18 @@ export async function createTeam(params: { eventId: string; ownerParticipantId: 
     if (!event) throw new GameError("not_found", "Event not found.");
     if (event.status !== "setup" && event.status !== "lobby") {
       throw new GameError("invalid_event_stage", "Teams can only be created before Stage 1 begins.");
+    }
+
+    // Staff (moderator/admin) accounts stay strictly separate from
+    // playing — an admin ending up as a team's owner meant they'd start
+    // seeing the full player nav instead of just auction control, which
+    // defeats the point of having a distinct staff role at all.
+    const [staffRow] = await tx
+      .select({ id: eventStaff.id })
+      .from(eventStaff)
+      .where(and(eq(eventStaff.eventId, params.eventId), eq(eventStaff.participantId, params.ownerParticipantId)));
+    if (staffRow) {
+      throw new GameError("forbidden", "Staff accounts can't create or join a team — sign in with a different account to play.");
     }
 
     const [existingMembership] = await tx

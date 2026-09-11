@@ -9,25 +9,24 @@ import { usePathname } from "next/navigation";
 // screen shares, so it's where a staff member's only route to the
 // moderator console lives.
 //
-// A staff member with no team of their own has no use for Live Auction /
-// Inventory / Trade & Build / City Auction / Portfolio — every one of
-// those is scoped to "your team," which they don't have. Those five are
-// hidden for a staff-only account; Event Home and Rules stay (both are
-// useful regardless of role) and the Moderator Console link takes over as
-// the primary destination. A staff member who's ALSO on a team (playing
-// and moderating) still sees the full nav — the hiding only applies when
-// there's genuinely no team to show any of it for.
+// Staff (moderator/admin) accounts are kept strictly separate from
+// playing: every "your team" screen — Live Auction, Inventory, Trade &
+// Build, City Auction, Portfolio — is hidden for ANY staff account,
+// whether or not they happen to own a team row. Event Home and Rules
+// stay (both are useful regardless of role) and the Moderator Console
+// link takes over as the primary destination. This was previously
+// conditional on "does this staff member also have a team," but that
+// let an admin who created a team for local testing end up seeing the
+// full player nav — staff should only ever see auction control.
 export function TeamNav({ eventId }: { eventId: string }) {
   const pathname = usePathname();
   const [isStaff, setIsStaff] = useState(false);
-  const [hasTeam, setHasTeam] = useState(true); // default true so links don't flash away before the check resolves
 
   useEffect(() => {
     fetch(`/api/events/${eventId}/overview`)
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
         setIsStaff(Boolean(d?.isStaff));
-        setHasTeam(Boolean(d?.myTeam));
       })
       .catch(() => {});
   }, [eventId]);
@@ -41,7 +40,7 @@ export function TeamNav({ eventId }: { eventId: string }) {
   ];
   const links = [
     { href: `/events/${eventId}`, label: "Event Home" },
-    ...(isStaff && !hasTeam ? [] : teamOnlyLinks),
+    ...(isStaff ? [] : teamOnlyLinks),
     { href: `/events/${eventId}/rules`, label: "Rules" },
   ];
   return (
