@@ -1,18 +1,42 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useSession, signIn, signOut } from "next-auth/react";
 
 // Hero styling ported from the legacy repo's src/app/page.tsx (bg.png
-// full-bleed background, Minecraft-font title, tan action button) — only
-// the action itself changes, since there's no fixed "/team" or "/bid"
-// route anymore: sign in, then jump straight to whichever event id your
-// moderator shared with you.
+// full-bleed background, Minecraft-font title, tan action button).
+//
+// This deployment is one EC2 instance per live event, so there is only
+// ever one event to go to — nobody should ever have to type or paste an
+// event id. Once signed in, we fetch the single event that exists on this
+// server and jump straight there.
 export default function Home() {
   const { data: session, status } = useSession();
   const router = useRouter();
-  const [eventId, setEventId] = useState("");
+  const [eventId, setEventId] = useState<string | null>(null);
+  const [eventName, setEventName] = useState<string | null>(null);
+  const [notFound, setNotFound] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/events/default")
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.event) {
+          setEventId(d.event.id);
+          setEventName(d.event.name);
+        } else {
+          setNotFound(true);
+        }
+      })
+      .catch(() => setNotFound(true));
+  }, []);
+
+  useEffect(() => {
+    if (status === "authenticated" && eventId) {
+      router.replace(`/events/${eventId}`);
+    }
+  }, [status, eventId, router]);
 
   return (
     <div
@@ -42,30 +66,20 @@ export default function Home() {
         BRICKS <span className="text-yellow-500">BY BID</span>
       </h2>
       <p className="mt-4 text-sm md:text-lg font-bold text-white">Trade Smart, Bid Bold, Build Big</p>
+      {eventName && <p className="mt-1 text-sm text-white/80">{eventName}</p>}
 
       <div className="mt-6">
         {status === "loading" && <p className="text-white">Loading…</p>}
-        {status === "unauthenticated" && (
+        {status === "unauthenticated" && !notFound && (
           <button onClick={() => signIn("google")} className="bg-[#B17E41] px-6 py-3 text-black text-lg font-bold minecraft-font shadow-lg">
             Register Now →
           </button>
         )}
-        {status === "authenticated" && (
-          <div className="flex flex-col md:flex-row gap-3 items-start md:items-center bg-black/40 p-4 rounded">
-            <input
-              value={eventId}
-              onChange={(e) => setEventId(e.target.value)}
-              placeholder="event id from your moderator"
-              className="px-4 py-2 rounded text-black w-72"
-            />
-            <button
-              onClick={() => router.push(`/events/${eventId}`)}
-              disabled={!eventId}
-              className="bg-[#B17E41] px-6 py-2 text-black text-lg font-bold minecraft-font shadow-lg disabled:opacity-50"
-            >
-              Go →
-            </button>
-          </div>
+        {status === "authenticated" && !eventId && !notFound && <p className="text-white">Loading event…</p>}
+        {notFound && (
+          <p className="bg-black/50 text-red-300 px-4 py-3 rounded max-w-md">
+            No event has been set up on this server yet. Ask your moderator to create one.
+          </p>
         )}
       </div>
     </div>
