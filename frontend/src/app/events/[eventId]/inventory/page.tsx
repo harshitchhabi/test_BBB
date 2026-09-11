@@ -3,6 +3,7 @@
 import { use, useCallback, useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useEventSocket } from "@/lib/use-event-socket";
+import { fetchJson, FetchJsonError } from "@/lib/fetch-json";
 import { TeamNav } from "../team-nav";
 import { PageFrame } from "@/components/theme/PageFrame";
 import { HeaderBanner } from "@/components/theme/HeaderBanner";
@@ -16,16 +17,22 @@ export default function InventoryPage({ params }: { params: Promise<{ eventId: s
   const [overview, setOverview] = useState<any>(null);
   const [inventory, setInventory] = useState<any[] | null>(null);
   const [bankStock, setBankStock] = useState<any[] | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    const ov = await fetch(`/api/events/${eventId}/overview`).then((r) => r.json());
-    setOverview(ov);
-    if (ov.myTeam) {
-      const inv = await fetch(`/api/events/${eventId}/teams/${ov.myTeam.id}/inventory`).then((r) => r.json());
-      setInventory(inv.inventory);
+    try {
+      const ov = await fetchJson<any>(`/api/events/${eventId}/overview`);
+      setOverview(ov);
+      if (ov.myTeam) {
+        const inv = await fetchJson<any>(`/api/events/${eventId}/teams/${ov.myTeam.id}/inventory`);
+        setInventory(inv.inventory);
+      }
+      const bank = await fetchJson<any>(`/api/events/${eventId}/bank-stock`);
+      setBankStock(bank.stock);
+      setLoadError(null);
+    } catch (err) {
+      setLoadError(err instanceof FetchJsonError ? err.message : "Couldn't load this page. Retrying…");
     }
-    const bank = await fetch(`/api/events/${eventId}/bank-stock`).then((r) => r.json());
-    setBankStock(bank.stock);
   }, [eventId]);
 
   useEffect(() => {
@@ -37,12 +44,14 @@ export default function InventoryPage({ params }: { params: Promise<{ eventId: s
     if (connected) refresh();
   }, [connected, refresh]);
 
+  if (loadError && !overview) return <PageFrame><p className="text-red-300 text-center mt-8">{loadError}</p></PageFrame>;
   if (!overview) return <PageFrame><p className="text-[#F1EBB5]">Loading…</p></PageFrame>;
 
   return (
     <PageFrame>
       <TeamNav eventId={eventId} />
       <HeaderBanner image="/assets/images/cart_page/header.png">MY INVENTORY</HeaderBanner>
+      {loadError && <p className="text-red-300 mb-3">{loadError}</p>}
 
       {!overview.myTeam ? (
         <p className="text-[#F1EBB5]">Join a team first.</p>

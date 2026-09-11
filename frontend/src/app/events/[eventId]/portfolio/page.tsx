@@ -3,6 +3,7 @@
 import { use, useCallback, useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useEventSocket } from "@/lib/use-event-socket";
+import { fetchJson, FetchJsonError } from "@/lib/fetch-json";
 import { TeamNav } from "../team-nav";
 import { PageFrame } from "@/components/theme/PageFrame";
 import { HeaderBanner } from "@/components/theme/HeaderBanner";
@@ -18,21 +19,27 @@ export default function PortfolioPage({ params }: { params: Promise<{ eventId: s
   const [preReveal, setPreReveal] = useState<any>(null);
   const [standing, setStanding] = useState<any>(null);
   const [buildings, setBuildings] = useState<any[]>([]);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    const ov = await fetch(`/api/events/${eventId}/overview`).then((r) => r.json());
-    setOverview(ov);
-    if (!ov.myTeam) return;
+    try {
+      const ov = await fetchJson<any>(`/api/events/${eventId}/overview`);
+      setOverview(ov);
+      if (!ov.myTeam) return;
 
-    const bld = await fetch(`/api/events/${eventId}/buildings/list?teamId=${ov.myTeam.id}`).then((r) => r.json());
-    setBuildings(bld.buildings);
+      const bld = await fetchJson<any>(`/api/events/${eventId}/buildings/list?teamId=${ov.myTeam.id}`);
+      setBuildings(bld.buildings);
 
-    if (ov.event.status === "completed") {
-      const board = await fetch(`/api/events/${eventId}/scoreboard`).then((r) => r.json());
-      setStanding(board.standings.find((s: any) => s.teamId === ov.myTeam.id) ?? null);
-    } else {
-      const pre = await fetch(`/api/events/${eventId}/teams/${ov.myTeam.id}/pre-reveal-score`).then((r) => r.json());
-      setPreReveal(pre);
+      if (ov.event.status === "completed") {
+        const board = await fetchJson<any>(`/api/events/${eventId}/scoreboard`);
+        setStanding(board.standings.find((s: any) => s.teamId === ov.myTeam.id) ?? null);
+      } else {
+        const pre = await fetchJson<any>(`/api/events/${eventId}/teams/${ov.myTeam.id}/pre-reveal-score`);
+        setPreReveal(pre);
+      }
+      setLoadError(null);
+    } catch (err) {
+      setLoadError(err instanceof FetchJsonError ? err.message : "Couldn't load this page. Retrying…");
     }
   }, [eventId]);
 
@@ -44,6 +51,7 @@ export default function PortfolioPage({ params }: { params: Promise<{ eventId: s
     if (connected) refresh();
   }, [connected, refresh]);
 
+  if (loadError && !overview) return <PageFrame><p className="text-red-300 text-center mt-8">{loadError}</p></PageFrame>;
   if (!overview) return <PageFrame><p className="text-[#F1EBB5]">Loading…</p></PageFrame>;
   if (!overview.myTeam) {
     return (
@@ -58,6 +66,7 @@ export default function PortfolioPage({ params }: { params: Promise<{ eventId: s
     <PageFrame>
       <TeamNav eventId={eventId} />
       <HeaderBanner image="/assets/images/cart_page/header.png">PORTFOLIO & SCORE</HeaderBanner>
+      {loadError && <p className="text-red-300 mb-3">{loadError}</p>}
 
       <Panel className="w-full max-w-2xl mb-6">
         <PanelTitle>APPROVED BUILDINGS</PanelTitle>

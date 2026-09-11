@@ -3,6 +3,7 @@
 import { use, useCallback, useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useEventSocket } from "@/lib/use-event-socket";
+import { fetchJson, FetchJsonError } from "@/lib/fetch-json";
 import { TeamNav } from "../team-nav";
 import { PageFrame } from "@/components/theme/PageFrame";
 import { HeaderBanner } from "@/components/theme/HeaderBanner";
@@ -20,17 +21,24 @@ export default function CityAuctionPage({ params }: { params: Promise<{ eventId:
   const [scoutReports, setScoutReports] = useState<any[]>([]);
   const [bidAmount, setBidAmount] = useState("");
   const [message, setMessage] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [now, setNow] = useState(() => Date.now());
 
   const refresh = useCallback(async () => {
-    const ov = await fetch(`/api/events/${eventId}/overview`).then((r) => r.json());
-    setOverview(ov);
-    const c = await fetch(`/api/events/${eventId}/cities`).then((r) => r.json());
-    setCities(c.cities);
-    const a = await fetch(`/api/events/${eventId}/city-auctions/list`).then((r) => r.json());
-    setAuctions(a.auctions);
-    if (ov.myTeam) {
-      const sr = await fetch(`/api/events/${eventId}/teams/${ov.myTeam.id}/scout-reports`).then((r) => r.json());
-      setScoutReports(sr.reports);
+    try {
+      const ov = await fetchJson<any>(`/api/events/${eventId}/overview`);
+      setOverview(ov);
+      const c = await fetchJson<any>(`/api/events/${eventId}/cities`);
+      setCities(c.cities);
+      const a = await fetchJson<any>(`/api/events/${eventId}/city-auctions/list`);
+      setAuctions(a.auctions);
+      if (ov.myTeam) {
+        const sr = await fetchJson<any>(`/api/events/${eventId}/teams/${ov.myTeam.id}/scout-reports`);
+        setScoutReports(sr.reports);
+      }
+      setLoadError(null);
+    } catch (err) {
+      setLoadError(err instanceof FetchJsonError ? err.message : "Couldn't load this page. Retrying…");
     }
   }, [eventId]);
 
@@ -41,6 +49,16 @@ export default function CityAuctionPage({ params }: { params: Promise<{ eventId:
   useEffect(() => {
     if (connected) refresh();
   }, [connected, refresh]);
+
+  // Without this tick, the city auction countdown only moved when a
+  // WebSocket broadcast happened to trigger a re-render (someone else
+  // bidding) — same fix as the Stage 1 auction screen.
+  const liveAuctionId = auctions.find((a) => a.status === "live")?.id;
+  useEffect(() => {
+    if (!liveAuctionId) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [liveAuctionId]);
 
   async function bid(auctionId: string) {
     if (!overview?.myTeam) return;
@@ -71,16 +89,20 @@ export default function CityAuctionPage({ params }: { params: Promise<{ eventId:
     else refresh();
   }
 
+  if (loadError && !overview) return <PageFrame><p className="text-red-300 text-center mt-8">{loadError}</p></PageFrame>;
   if (!overview) return <PageFrame><p className="text-[#F1EBB5]">Loading…</p></PageFrame>;
 
   const myCity = cities.find((c) => c.assignedTeamId === overview.myTeam?.id);
   const liveAuction = auctions.find((a) => a.status === "live");
   const scoutReportByCity = new Map(scoutReports.map((r) => [r.cityId, r]));
+  const secondsLeft = liveAuction?.closesAt ? Math.max(0, Math.round((new Date(liveAuction.closesAt).getTime() - now) / 1000)) : 0;
+  const timerExpired = Boolean(liveAuction?.closesAt) && secondsLeft <= 0;
 
   return (
     <PageFrame>
       <TeamNav eventId={eventId} />
       <HeaderBanner>CITY AUCTION</HeaderBanner>
+      {loadError && <p className="text-red-300 mb-3">{loadError}</p>}
       {message && <p className="text-red-300 mb-3">{message}</p>}
 
       {overview.myTeam && (
@@ -100,11 +122,18 @@ export default function CityAuctionPage({ params }: { params: Promise<{ eventId:
             Opening bid: ₹{liveAuction.openingBid} · Current highest:{" "}
             {liveAuction.currentHighestBid ? `₹${liveAuction.currentHighestBid.amount} (${liveAuction.currentHighestBid.teamName})` : "none"}
           </p>
-          {overview.myRole === "leader" && !myCity ? (
+          {liveAuction.closesAt && (
+            <p className={`mb-2 font-bold ${secondsLeft <= 10 ? "text-red-400" : "text-yellow-300"}`}>
+              ⏱ {Math.floor(secondsLeft / 60)}:{(secondsLeft % 60).toString().padStart(2, "0")}
+            </p>
+          )}
+          {overview.myRole === "leader" && !myCity && !timerExpired ? (
             <div className="flex gap-2">
               <input type="number" value={bidAmount} onChange={(e) => setBidAmount(e.target.value)} className="px-3 py-2 rounded text-black flex-1" />
               <WoodButton variant="primary" onClick={() => bid(liveAuction.id)} disabled={!bidAmount}>Bid</WoodButton>
             </div>
+          ) : timerExpired && overview.myRole === "leader" && !myCity ? (
+            <p className="text-[#F1EBB5]">This auction's timer has run out — waiting for the moderator to close it.</p>
           ) : myCity ? (
             <p className="text-[#F1EBB5]">You already won a city — you can't bid again.</p>
           ) : null}

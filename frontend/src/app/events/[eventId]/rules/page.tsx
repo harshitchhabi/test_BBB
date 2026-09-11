@@ -2,8 +2,19 @@
 
 import { use, useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
+import { fetchJson, FetchJsonError } from "@/lib/fetch-json";
 import { TeamNav } from "../team-nav";
 import { PageFrame } from "@/components/theme/PageFrame";
+
+const STAGE_LABELS: Record<string, string> = {
+  setup: "Setup",
+  lobby: "Lobby",
+  stage_1: "Stage 1",
+  stage_2: "Stage 2",
+  stage_3: "Stage 3",
+  scoring: "Scoring",
+  completed: "Completed",
+};
 
 // Section 7.1 "Rules" — same wooden-frame + rules/heading.png banner as
 // the legacy rules page, but every number is read live from this event's
@@ -13,15 +24,17 @@ export default function RulesPage({ params }: { params: Promise<{ eventId: strin
   const { eventId } = use(params);
   const { status } = useSession();
   const [overview, setOverview] = useState<any>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     if (status === "authenticated") {
-      fetch(`/api/events/${eventId}/overview`)
-        .then((r) => r.json())
-        .then(setOverview);
+      fetchJson<any>(`/api/events/${eventId}/overview`)
+        .then(setOverview)
+        .catch((err) => setLoadError(err instanceof FetchJsonError ? err.message : "Couldn't load the rules. Retrying…"));
     }
   }, [eventId, status]);
 
+  if (loadError && !overview) return <PageFrame><p className="text-red-300 text-center mt-8">{loadError}</p></PageFrame>;
   if (!overview) return <PageFrame><p className="text-[#F1EBB5]">Loading…</p></PageFrame>;
   const s = overview.settings;
 
@@ -34,7 +47,8 @@ export default function RulesPage({ params }: { params: Promise<{ eventId: strin
 
       <div className="w-full max-w-3xl p-4 md:p-6 overflow-y-auto text-yellow-100 text-sm md:text-base leading-relaxed bg-[#3b2a1a]/70 rounded-lg">
         <p className="mb-4 text-yellow-300">
-          Rulebook version: {overview.event.rulesVersion} · Current stage: <strong>{overview.event.status}</strong>
+          Rulebook version: {overview.event.rulesVersion} · Current stage:{" "}
+          <strong>{STAGE_LABELS[overview.event.status] ?? overview.event.status}</strong>
         </p>
 
         <h2 className="text-yellow-300 font-bold text-lg mb-2">Stage 1: Material Auction</h2>

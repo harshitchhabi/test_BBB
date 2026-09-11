@@ -3,6 +3,7 @@
 import { use, useCallback, useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useEventSocket } from "@/lib/use-event-socket";
+import { fetchJson, FetchJsonError } from "@/lib/fetch-json";
 import { ModNav } from "../mod-nav";
 import { PageFrame } from "@/components/theme/PageFrame";
 import { HeaderBanner } from "@/components/theme/HeaderBanner";
@@ -21,17 +22,23 @@ export default function ModeratorCitiesPage({ params }: { params: Promise<{ even
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [standings, setStandings] = useState<any[] | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    const ov = await fetch(`/api/events/${eventId}/overview`).then((r) => r.json());
-    setOverview(ov);
-    const c = await fetch(`/api/events/${eventId}/cities`).then((r) => r.json());
-    setCities(c.cities);
-    const a = await fetch(`/api/events/${eventId}/city-auctions/list`).then((r) => r.json());
-    setAuctions(a.auctions);
-    if (ov.event?.status === "completed") {
-      const s = await fetch(`/api/events/${eventId}/exports/standings?format=json`).then((r) => r.json());
-      setStandings(s.standings ?? []);
+    try {
+      const ov = await fetchJson<any>(`/api/events/${eventId}/overview`);
+      setOverview(ov);
+      const c = await fetchJson<any>(`/api/events/${eventId}/cities`);
+      setCities(c.cities);
+      const a = await fetchJson<any>(`/api/events/${eventId}/city-auctions/list`);
+      setAuctions(a.auctions);
+      if (ov.event?.status === "completed") {
+        const s = await fetchJson<any>(`/api/events/${eventId}/exports/standings?format=json`);
+        setStandings(s.standings ?? []);
+      }
+      setLoadError(null);
+    } catch (err) {
+      setLoadError(err instanceof FetchJsonError ? err.message : "Couldn't load this page. Retrying…");
     }
   }, [eventId]);
 
@@ -56,7 +63,13 @@ export default function ModeratorCitiesPage({ params }: { params: Promise<{ even
     }
   }
 
+  if (loadError && !overview) return <PageFrame><ModNav eventId={eventId} /><p className="text-red-300 text-center mt-8">{loadError}</p></PageFrame>;
   if (!overview) return <PageFrame><p className="text-[#F1EBB5]">Loading…</p></PageFrame>;
+
+  function revealAndFinalize() {
+    if (!window.confirm("Reveal all city multipliers and finalize scores? This is irreversible for this round — every team's final rank locks in.")) return;
+    call(`/api/events/${eventId}/cities/reveal`);
+  }
 
   const liveAuctionByCity = new Map(auctions.filter((a) => a.status === "live").map((a) => [a.cityId, a]));
   // Only active teams count toward "is exactly one team left without a
@@ -71,9 +84,10 @@ export default function ModeratorCitiesPage({ params }: { params: Promise<{ even
     <PageFrame>
       <ModNav eventId={eventId} />
       <HeaderBanner>STAGE 3: CITIES & REVEAL</HeaderBanner>
+      {loadError && <p className="text-red-300 mb-3">{loadError}</p>}
       {message && <p className="text-red-300 mb-3">{message}</p>}
 
-      <WoodButton variant="danger" disabled={busy} onClick={() => call(`/api/events/${eventId}/cities/reveal`)} className="mb-4 text-lg">
+      <WoodButton variant="danger" disabled={busy} onClick={revealAndFinalize} className="mb-4 text-lg">
         Reveal all multipliers & finalize scores
       </WoodButton>
 

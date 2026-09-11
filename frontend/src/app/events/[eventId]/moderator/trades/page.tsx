@@ -15,11 +15,18 @@ export default function ModeratorTradesPage({ params }: { params: Promise<{ even
   const { status } = useSession();
   const [trades, setTrades] = useState<any[]>([]);
   const [message, setMessage] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const refresh = useCallback(async () => {
     const res = await fetch(`/api/events/${eventId}/trades/list`);
-    if (res.ok) setTrades((await res.json()).trades);
+    const body = await res.json().catch(() => null);
+    if (res.ok) {
+      setTrades(body.trades);
+      setLoadError(null);
+    } else {
+      setLoadError(body?.message ?? `Couldn't load trades (${res.status}).`);
+    }
   }, [eventId]);
 
   useEffect(() => {
@@ -47,9 +54,11 @@ export default function ModeratorTradesPage({ params }: { params: Promise<{ even
     <PageFrame>
       <ModNav eventId={eventId} />
       <HeaderBanner>TRADE DESK</HeaderBanner>
+      {loadError && <p className="text-red-300 mb-3">{loadError}</p>}
       {message && <p className="text-red-300 mb-3">{message}</p>}
 
       <Panel className="w-full">
+        {trades.length === 0 && <p className="text-white/70 text-center py-4">No trades proposed yet.</p>}
         <div className="space-y-2">
           {trades.map((t) => (
             <div key={t.id} className="bg-[#764A21]/40 rounded-lg p-3 text-white">

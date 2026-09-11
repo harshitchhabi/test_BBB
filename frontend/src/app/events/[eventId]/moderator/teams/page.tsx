@@ -3,6 +3,7 @@
 import { use, useCallback, useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useEventSocket } from "@/lib/use-event-socket";
+import { fetchJson, FetchJsonError } from "@/lib/fetch-json";
 import { ModNav } from "../mod-nav";
 import { PageFrame } from "@/components/theme/PageFrame";
 import { HeaderBanner } from "@/components/theme/HeaderBanner";
@@ -17,10 +18,16 @@ export default function ModeratorTeamsPage({ params }: { params: Promise<{ event
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [adjustAmount, setAdjustAmount] = useState<Record<string, string>>({});
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    const ov = await fetch(`/api/events/${eventId}/overview`).then((r) => r.json());
-    setOverview(ov);
+    try {
+      const ov = await fetchJson<any>(`/api/events/${eventId}/overview`);
+      setOverview(ov);
+      setLoadError(null);
+    } catch (err) {
+      setLoadError(err instanceof FetchJsonError ? err.message : "Couldn't load this page. Retrying…");
+    }
   }, [eventId]);
 
   useEffect(() => {
@@ -52,15 +59,20 @@ export default function ModeratorTeamsPage({ params }: { params: Promise<{ event
     call(`/api/events/${eventId}/teams/${teamId}`, { reason }, "DELETE");
   }
 
+  if (loadError && !overview) return <PageFrame><ModNav eventId={eventId} /><p className="text-red-300 text-center mt-8">{loadError}</p></PageFrame>;
   if (!overview) return <PageFrame><p className="text-[#F1EBB5]">Loading…</p></PageFrame>;
 
   return (
     <PageFrame>
       <ModNav eventId={eventId} />
       <HeaderBanner>TEAMS & INCIDENTS</HeaderBanner>
+      {loadError && <p className="text-red-300 mb-3">{loadError}</p>}
       {message && <p className="text-red-300 mb-3">{message}</p>}
 
       <Panel className="w-full">
+        {overview.teams.length === 0 && (
+          <p className="text-white/70 text-center py-6">No teams have registered for this event yet.</p>
+        )}
         <div className="space-y-2">
           {overview.teams.map((t: any) => (
             <div key={t.id} className="bg-[#764A21]/40 rounded-lg p-3 text-white flex flex-wrap gap-3 items-center justify-between">

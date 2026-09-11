@@ -174,7 +174,12 @@ export default function ModeratorSetupPage({ params }: { params: Promise<{ event
           className="w-full px-3 py-2 rounded text-black mb-2"
         />
         <label className="flex items-center gap-2 text-white/90 text-sm mb-3">
-          <input type="checkbox" checked={resetConfirmed} onChange={(e) => setResetConfirmed(e.target.checked)} />
+          <input
+            type="checkbox"
+            checked={resetConfirmed}
+            onChange={(e) => setResetConfirmed(e.target.checked)}
+            className="w-5 h-5 accent-red-500 shrink-0"
+          />
           I understand this deletes all teams and progress for this event.
         </label>
         <WoodButton variant="danger" disabled={resetBusy || !resetReason || !resetConfirmed} onClick={resetForNewRound}>

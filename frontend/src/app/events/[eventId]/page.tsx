@@ -86,6 +86,15 @@ export default function EventHomePage({ params }: { params: Promise<{ eventId: s
   }
 
   const stageOrder = ["setup", "lobby", "stage_1", "stage_2", "stage_3", "scoring", "completed"];
+  const stageLabels: Record<string, string> = {
+    setup: "Setup",
+    lobby: "Lobby",
+    stage_1: "Stage 1",
+    stage_2: "Stage 2",
+    stage_3: "Stage 3",
+    scoring: "Scoring",
+    completed: "Completed",
+  };
   const currentIndex = stageOrder.indexOf(overview.event.status);
 
   return (
@@ -103,11 +112,21 @@ export default function EventHomePage({ params }: { params: Promise<{ eventId: s
       )}
 
       <Panel className="mb-6">
-        <div className="flex flex-wrap gap-2 justify-center text-[#F1EBB5] text-sm md:text-base">
+        <div className="flex flex-wrap gap-2 justify-center items-center text-[#F1EBB5] text-sm md:text-base">
           {stageOrder.map((s, i) => (
-            <span key={s} className={i <= currentIndex ? "font-bold" : "opacity-40"}>
-              {s}
-              {i < stageOrder.length - 1 ? " → " : ""}
+            <span key={s} className="flex items-center gap-2">
+              <span
+                className={
+                  i === currentIndex
+                    ? "px-2 py-1 rounded bg-yellow-500 text-black font-bold"
+                    : i < currentIndex
+                      ? "font-bold"
+                      : "opacity-40"
+                }
+              >
+                {stageLabels[s] ?? s}
+              </span>
+              {i < stageOrder.length - 1 && <span className="opacity-60">→</span>}
             </span>
           ))}
         </div>

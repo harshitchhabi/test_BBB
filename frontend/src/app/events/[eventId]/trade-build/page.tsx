@@ -3,6 +3,7 @@
 import { use, useCallback, useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useEventSocket } from "@/lib/use-event-socket";
+import { fetchJson, FetchJsonError } from "@/lib/fetch-json";
 import { TeamNav } from "../team-nav";
 import { PageFrame } from "@/components/theme/PageFrame";
 import { HeaderBanner } from "@/components/theme/HeaderBanner";
@@ -23,6 +24,7 @@ export default function TradeBuildPage({ params }: { params: Promise<{ eventId: 
   const [myTrades, setMyTrades] = useState<any[]>([]);
   const [bankStock, setBankStock] = useState<any[]>([]);
   const [message, setMessage] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const [counterpartyTeamId, setCounterpartyTeamId] = useState("");
   const [tradeLines, setTradeLines] = useState<Array<{ fromMe: boolean; materialTypeId: string; quantity: string }>>([
@@ -30,19 +32,24 @@ export default function TradeBuildPage({ params }: { params: Promise<{ eventId: 
   ]);
 
   const refresh = useCallback(async () => {
-    const ov = await fetch(`/api/events/${eventId}/overview`).then((r) => r.json());
-    setOverview(ov);
-    const materials = await fetch(`/api/events/${eventId}/bank-stock`).then((r) => r.json());
-    setBankStock(materials.stock);
-    const rec = await fetch(`/api/events/${eventId}/recipes`).then((r) => r.json());
-    setRecipes(rec.recipes);
-    const tr = await fetch(`/api/events/${eventId}/trades/list`).then((r) => r.json());
-    setMyTrades(tr.trades);
-    if (ov.myTeam) {
-      const inv = await fetch(`/api/events/${eventId}/teams/${ov.myTeam.id}/inventory`).then((r) => r.json());
-      setInventory(inv.inventory);
-      const bld = await fetch(`/api/events/${eventId}/buildings/list?teamId=${ov.myTeam.id}`).then((r) => r.json());
-      setMyBuildings(bld.buildings);
+    try {
+      const ov = await fetchJson<any>(`/api/events/${eventId}/overview`);
+      setOverview(ov);
+      const materials = await fetchJson<any>(`/api/events/${eventId}/bank-stock`);
+      setBankStock(materials.stock);
+      const rec = await fetchJson<any>(`/api/events/${eventId}/recipes`);
+      setRecipes(rec.recipes);
+      const tr = await fetchJson<any>(`/api/events/${eventId}/trades/list`);
+      setMyTrades(tr.trades);
+      if (ov.myTeam) {
+        const inv = await fetchJson<any>(`/api/events/${eventId}/teams/${ov.myTeam.id}/inventory`);
+        setInventory(inv.inventory);
+        const bld = await fetchJson<any>(`/api/events/${eventId}/buildings/list?teamId=${ov.myTeam.id}`);
+        setMyBuildings(bld.buildings);
+      }
+      setLoadError(null);
+    } catch (err) {
+      setLoadError(err instanceof FetchJsonError ? err.message : "Couldn't load this page. Retrying…");
     }
   }, [eventId]);
 
@@ -88,6 +95,7 @@ export default function TradeBuildPage({ params }: { params: Promise<{ eventId: 
     else refresh();
   }
 
+  if (loadError && !overview) return <PageFrame><p className="text-red-300 text-center mt-8">{loadError}</p></PageFrame>;
   if (!overview) return <PageFrame><p className="text-[#F1EBB5]">Loading…</p></PageFrame>;
   if (!overview.myTeam) {
     return (
@@ -104,6 +112,7 @@ export default function TradeBuildPage({ params }: { params: Promise<{ eventId: 
     <PageFrame>
       <TeamNav eventId={eventId} />
       <HeaderBanner>TRADE & BUILD</HeaderBanner>
+      {loadError && <p className="text-red-300 mb-3">{loadError}</p>}
       {message && <p className="text-red-300 mb-3">{message}</p>}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full">
