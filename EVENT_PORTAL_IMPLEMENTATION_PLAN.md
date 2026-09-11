@@ -788,7 +788,7 @@ moderator.announcement
 
 ## 11. Implementation order for this repository
 
-1. Create a feature branch, for example `codex/bricks-by-bid-event-engine`.
+1. Create a feature branch, for example `bricks-by-bid-event-engine`.
 2. Add an `events` domain module and event-scoped database migration.
 3. Build and test server-side command handlers before changing visual design.
 4. Replace the existing raw-material constants with database seed data.

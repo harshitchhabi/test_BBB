@@ -4,7 +4,7 @@
 
 - Fresh repo initialized at the project root (not inside the legacy `my-bid`
   clone — that stays local-only, git-ignored, reference material). Branch:
-  `codex/bricks-by-bid-event-engine`.
+  `bricks-by-bid-event-engine`.
 - Full Section 5 Drizzle schema written under `packages/db/schema/`, split
   by domain (`identity`, `materials`, `auction`, `inventory`, `buildings`,
   `cities`, `scoring`, plus a shared `enums.ts`) — 28 tables total. This
