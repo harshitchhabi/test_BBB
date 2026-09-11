@@ -24,6 +24,20 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ eventId:
   const [bidAmount, setBidAmount] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
+
+  // secondsLeft below is derived from `closesAt` and `now` — without this
+  // tick, the displayed countdown only changed when a WebSocket broadcast
+  // happened to trigger a re-render (someone else bidding), so a team just
+  // watching the clock during a quiet moment would see it appear frozen
+  // instead of visibly counting down, which defeats the point of a timed
+  // auction. A 1-lot-at-a-time countdown for ~30 teams is cheap enough to
+  // just tick every second while a lot is live.
+  useEffect(() => {
+    if (!state?.liveLot) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [state?.liveLot?.id, state?.liveLot?.closesAt]);
 
   const refresh = useCallback(async () => {
     const res = await fetch(`/api/events/${eventId}/auction-state`);
@@ -82,8 +96,14 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ eventId:
   if (!state) return <PageFrame><p className="text-[#F1EBB5]">Loading auction state…</p></PageFrame>;
 
   const myTeam = state.teams.find((t) => t.id === state.myTeamId);
-  const canBid = state.myRole === "leader" && state.liveLot != null;
-  const secondsLeft = state.liveLot?.closesAt ? Math.max(0, Math.round((new Date(state.liveLot.closesAt).getTime() - Date.now()) / 1000)) : 0;
+  const secondsLeft = state.liveLot?.closesAt ? Math.max(0, Math.round((new Date(state.liveLot.closesAt).getTime() - now) / 1000)) : 0;
+  // secondsLeft > 0 is required too: the countdown is purely a client-side
+  // clock reading (see closesAt above), and a bid submitted after it hits
+  // 0:00 will always be rejected server-side (the timer sweep or the
+  // moderator's "Close lot" already ended it) — better to disable the
+  // button the moment the clock a team is staring at says "time's up"
+  // than let them submit into a guaranteed, confusing rejection.
+  const canBid = state.myRole === "leader" && state.liveLot != null && secondsLeft > 0;
   // The read model only exposes closesAt, not the lot's total configured
   // duration, so the ring approximates against a 60s reference rather
   // than showing a perfectly calibrated sweep — good enough for "time is
@@ -146,7 +166,11 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ eventId:
                 </div>
               ) : (
                 <p className="text-[#F1EBB5]">
-                  {state.myRole === "member" ? "Only your team leader can bid." : "You are not on a team in this event."}
+                  {state.myRole === "member"
+                    ? "Only your team leader can bid."
+                    : state.myRole !== "leader"
+                      ? "You are not on a team in this event."
+                      : "This lot's timer has run out — waiting for the moderator to close it."}
                 </p>
               )}
               {error && <p className="text-red-300 mt-3">{error}</p>}
