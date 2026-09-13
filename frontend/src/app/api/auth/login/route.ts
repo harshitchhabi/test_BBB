@@ -25,7 +25,7 @@ export async function POST(req: Request) {
     }
 
     const { participant, sessionId } = await login({ username, password });
-    recordLoginSuccess(username, address);
+    recordLoginSuccess(username);
     await setSessionCookie(participant.id, sessionId);
 
     return NextResponse.json({ user: { id: participant.id, name: participant.name, username: participant.username } });

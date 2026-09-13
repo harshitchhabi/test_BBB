@@ -48,19 +48,34 @@ function sweep(now: number) {
   }
 }
 
+// The account lockout is keyed on the username ALONE, not combined with
+// the address — the address header (see clientAddress below) comes from
+// the client and isn't trustworthy unless the deployment is known to sit
+// behind a proxy that overwrites it, so the one lockout that actually has
+// to hold under a spoofed address is the one that never looks at it. The
+// address-keyed lockout is a secondary, looser layer (catches one address
+// spraying many usernames) — its own bypassability by header spoofing
+// only weakens that secondary layer, not the account-brute-force defense.
 export function checkLoginAllowed(username: string, address: string): { ok: boolean; waitSeconds: number } {
   const now = Date.now();
   const byAddress = allow(`a:${address}`, ADDRESS_ATTEMPTS, ADDRESS_WINDOW_MS, ADDRESS_LOCKOUT_MS, now);
   if (!byAddress.ok) return { ok: false, waitSeconds: Math.ceil(byAddress.waitMs / 1000) };
-  const byAccount = allow(`u:${username.toLowerCase()}|${address}`, ACCOUNT_ATTEMPTS, ACCOUNT_WINDOW_MS, ACCOUNT_LOCKOUT_MS, now);
+  const byAccount = allow(`u:${username.toLowerCase()}`, ACCOUNT_ATTEMPTS, ACCOUNT_WINDOW_MS, ACCOUNT_LOCKOUT_MS, now);
   return { ok: byAccount.ok, waitSeconds: Math.ceil(byAccount.waitMs / 1000) };
 }
 
-export function recordLoginSuccess(username: string, address: string) {
-  attempts.delete(`u:${username.toLowerCase()}|${address}`);
+export function recordLoginSuccess(username: string) {
+  attempts.delete(`u:${username.toLowerCase()}`);
 }
 
+// TRUST_PROXY_HEADERS opts in to reading X-Forwarded-For, for a
+// deployment that's actually behind a reverse proxy configured to
+// overwrite (not append to) that header. Without it, every request is
+// bucketed under one shared "unknown" address — which only weakens the
+// secondary per-address layer above, since the primary per-account
+// lockout (checkLoginAllowed) never depends on this value.
 export function clientAddress(req: Request): string {
+  if (process.env.TRUST_PROXY_HEADERS !== "true") return "unknown";
   const forwarded = req.headers.get("x-forwarded-for");
   if (forwarded) return forwarded.split(",")[0]!.trim();
   return "unknown";
