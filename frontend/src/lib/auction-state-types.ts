@@ -20,9 +20,14 @@ export interface AuctionStateResponse {
     openingBid: number;
     minimumRaise: number;
     closesAt: string | null;
-    currentHighestBid: { amount: number; teamId: string } | null;
+    currentHighestBid: { id: string; amount: number; teamId: string } | null;
     nextMinimumBid: number;
   } | null;
   pendingLotsCount: number;
+  // Staff-only (Task 2): the last few resolved lots in the current
+  // round, so the moderator console can void a winning bid (force the
+  // lot unsold) or reopen a lot for more bidding — dream_team's
+  // AssignUnsoldToPlayers/reopen equivalent.
+  recentLots: Array<{ id: string; lotNumber: number; status: string; winnerTeamName: string | null; winningBidId: string | null }>;
   teams: Array<{ id: string; name: string; auctionTokens: number | null; status: string }>;
 }

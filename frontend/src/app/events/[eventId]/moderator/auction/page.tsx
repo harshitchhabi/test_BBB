@@ -55,6 +55,7 @@ export default function ModeratorAuctionPage({ params }: { params: Promise<{ eve
   }, [connected, refresh]);
 
   async function call(path: string, body?: unknown) {
+    if (busy) return;
     setBusy(true);
     setMessage(null);
     try {
@@ -65,6 +66,29 @@ export default function ModeratorAuctionPage({ params }: { params: Promise<{ eve
     } finally {
       setBusy(false);
     }
+  }
+
+  // Task 2: dream_team's admin console can force a lot's outcome after
+  // the fact. Two tools, for two different moments:
+  // - voidBid, while a lot is still LIVE: strikes a fraudulent/duplicate
+  //   bid before it settles anything, letting the previous bid regain
+  //   "winning." Safe because nothing has been paid out yet.
+  // - reopenLot, on an already-closed lot: properly reverses the sale
+  //   (refunds tokens, reverses the material grant) before putting it
+  //   back up live — the only safe way to undo a lot that already
+  //   settled, since a bare voidBid there would leave the winner's
+  //   tokens/materials changed but the bid marked voided, an
+  //   inconsistent state.
+  function voidCurrentHighestBid(bidId: string, lotNumber: number) {
+    const reason = window.prompt(`Void the current highest bid on lot #${lotNumber}? The next-highest bid (if any) becomes winning. Enter a reason to confirm, or cancel:`);
+    if (!reason) return;
+    call(`/api/events/${eventId}/bids/${bidId}/void`, { reason });
+  }
+
+  function reopenLot(lotId: string, lotNumber: number) {
+    const reason = window.prompt(`Reopen lot #${lotNumber} for more bidding? Enter a reason to confirm, or cancel:`);
+    if (!reason) return;
+    call(`/api/events/${eventId}/auction-lots/${lotId}/reopen`, { reason });
   }
 
   if (status !== "authenticated") return <PageFrame><p className="text-[#F1EBB5]">Sign in as a moderator.</p></PageFrame>;
@@ -111,15 +135,45 @@ export default function ModeratorAuctionPage({ params }: { params: Promise<{ eve
                 Live: lot #{state.liveLot.lotNumber} — opening {state.liveLot.openingBid}, next min {state.liveLot.nextMinimumBid}
               </p>
               <p className="text-white/70 text-sm mb-2">Current highest: {state.liveLot.currentHighestBid ? state.liveLot.currentHighestBid.amount : "none"}</p>
-              <WoodButton variant="danger" disabled={busy} onClick={() => call(`/api/events/${eventId}/auction-lots/${state.liveLot!.id}/close`, { reason: "Moderator closed the lot." })}>
-                Close lot
-              </WoodButton>
+              <div className="flex gap-2 flex-wrap">
+                <WoodButton variant="danger" disabled={busy} onClick={() => call(`/api/events/${eventId}/auction-lots/${state.liveLot!.id}/close`, { reason: "Moderator closed the lot." })}>
+                  Close lot
+                </WoodButton>
+                {state.liveLot.currentHighestBid && (
+                  <WoodButton disabled={busy} onClick={() => voidCurrentHighestBid(state.liveLot!.currentHighestBid!.id, state.liveLot!.lotNumber)}>
+                    Void current highest bid
+                  </WoodButton>
+                )}
+              </div>
             </div>
           ) : (
             <WoodButton variant="primary" disabled={busy} onClick={() => call(`/api/events/${eventId}/auction-rounds/${state.activeRound!.id}/open-next-lot`)}>
               Open next lot
             </WoodButton>
           )}
+        </Panel>
+      )}
+
+      {state.recentLots.length > 0 && (
+        <Panel className="w-full max-w-2xl mb-4">
+          <PanelTitle>RECENT LOTS</PanelTitle>
+          <p className="text-white/70 text-sm mb-2">
+            Something went wrong with one of these? Reopen it — this properly reverses the sale (refunds the
+            winner's tokens, reverses the material grant) and puts it back up live. Close it again with no new
+            bids to force it unsold instead.
+          </p>
+          <div className="space-y-2">
+            {state.recentLots.map((l) => (
+              <div key={l.id} className="bg-[#764A21]/40 rounded-lg p-3 flex justify-between items-center text-white text-sm flex-wrap gap-2">
+                <span>
+                  Lot #{l.lotNumber} — {l.status}{l.winnerTeamName ? ` (won by ${l.winnerTeamName})` : ""}
+                </span>
+                <WoodButton disabled={busy} onClick={() => reopenLot(l.id, l.lotNumber)}>
+                  Reopen
+                </WoodButton>
+              </div>
+            ))}
+          </div>
         </Panel>
       )}
 

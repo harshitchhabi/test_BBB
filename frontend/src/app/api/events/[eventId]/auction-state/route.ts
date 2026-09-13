@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { db, eq, and, sql } from "db";
+import { db, eq, and, ne, desc, sql } from "db";
 import { events, auctionRounds, auctionLots, bids, materialTypes, teams, marketShockCards } from "db/schema";
 import { getParticipantContext } from "game-engine";
 import { isStaff } from "common";
@@ -24,6 +24,11 @@ export async function GET(_req: Request, { params }: { params: Promise<{ eventId
     const [event] = await db.select().from(events).where(eq(events.id, eventId));
     if (!event) return NextResponse.json({ error: "not_found", message: "Event not found." }, { status: 404 });
 
+    const teamRows = await db
+      .select({ id: teams.id, name: teams.name, auctionTokens: teams.auctionTokens, status: teams.status })
+      .from(teams)
+      .where(eq(teams.eventId, eventId));
+
     let activeRound: {
       id: string;
       sequence: number;
@@ -39,10 +44,11 @@ export async function GET(_req: Request, { params }: { params: Promise<{ eventId
       openingBid: number;
       minimumRaise: number;
       closesAt: Date | null;
-      currentHighestBid: { amount: number; teamId: string } | null;
+      currentHighestBid: { id: string; amount: number; teamId: string } | null;
       nextMinimumBid: number;
     } | null = null;
     let pendingLotsCount = 0;
+    let recentLots: Array<{ id: string; lotNumber: number; status: string; winnerTeamName: string | null; winningBidId: string | null }> = [];
 
     if (event.activeRoundId) {
       const [round] = await db.select().from(auctionRounds).where(eq(auctionRounds.id, event.activeRoundId));
@@ -82,17 +88,43 @@ export async function GET(_req: Request, { params }: { params: Promise<{ eventId
             openingBid: lot.openingBid,
             minimumRaise: lot.minimumRaise,
             closesAt: lot.closesAt,
-            currentHighestBid: highest ? { amount: highest.amount, teamId: highest.teamId } : null,
+            currentHighestBid: highest ? { id: highest.id, amount: highest.amount, teamId: highest.teamId } : null,
             nextMinimumBid: highest ? highest.amount + lot.minimumRaise : lot.openingBid,
           };
         }
+
+        // Task 2: dream_team's admin console can force a lot's outcome
+        // after the fact (its AssignUnsoldToPlayers). The nearest
+        // equivalent here is voidBid (undo the winning bid, effectively
+        // forcing the lot unsold) and reopenLot (put a resolved lot back
+        // up for bidding) — both already existed as engine functions and
+        // API routes but had no UI. Surfacing the last few resolved lots
+        // here is what that UI needs to know which bid/lot to act on.
+        if (isStaff(ctx)) {
+          const resolvedLots = await db
+            .select()
+            .from(auctionLots)
+            .where(and(eq(auctionLots.roundId, round.id), ne(auctionLots.status, "pending"), ne(auctionLots.status, "live")))
+            .orderBy(desc(auctionLots.lotNumber))
+            .limit(5);
+          recentLots = await Promise.all(
+            resolvedLots.map(async (rl) => {
+              const [winningBid] = rl.winnerTeamId
+                ? await db.select().from(bids).where(and(eq(bids.auctionLotId, rl.id), eq(bids.status, "winning")))
+                : [];
+              const winnerTeam = rl.winnerTeamId ? teamRows.find((t) => t.id === rl.winnerTeamId) : undefined;
+              return {
+                id: rl.id,
+                lotNumber: rl.lotNumber,
+                status: rl.status,
+                winnerTeamName: winnerTeam?.name ?? null,
+                winningBidId: winningBid?.id ?? null,
+              };
+            }),
+          );
+        }
       }
     }
-
-    const teamRows = await db
-      .select({ id: teams.id, name: teams.name, auctionTokens: teams.auctionTokens, status: teams.status })
-      .from(teams)
-      .where(eq(teams.eventId, eventId));
 
     const visibleTeams = isStaff(ctx)
       ? teamRows
@@ -106,6 +138,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ eventId
       activeRound,
       liveLot,
       pendingLotsCount,
+      recentLots,
       teams: visibleTeams,
     });
   } catch (err) {
