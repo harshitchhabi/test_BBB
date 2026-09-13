@@ -85,10 +85,41 @@ async function readJsonBody(req: IncomingMessage): Promise<unknown> {
   return raw ? JSON.parse(raw) : {};
 }
 
+// Deployment hardening: a sweep failure used to only reach console.error,
+// with no way to notice from outside the process short of tailing logs -
+// on a live event, that means lots quietly stop auto-closing on their
+// timer and nobody finds out until a team complains. /health now reports
+// the sweep's own state so an external uptime monitor polling this one
+// endpoint (no log access needed) can alert on it, and returns 503 (not
+// 200) once the sweep is actually stale/failing, so a plain "is this
+// endpoint up" check catches it without any special-casing on the
+// monitor's end.
+const sweepStatus: { lastSuccessAt: number | null; lastError: string | null; lastErrorAt: number | null } = {
+  lastSuccessAt: null,
+  lastError: null,
+  lastErrorAt: null,
+};
+// Generous relative to TIMER_SWEEP_INTERVAL_MS (default 2s) - only trips
+// if several consecutive ticks in a row have failed, not one blip.
+const SWEEP_STALE_MS = Math.max(TIMER_SWEEP_INTERVAL_MS * 10, 30_000);
+
 const server = createServer(async (req, res) => {
   if (req.method === "GET" && req.url === "/health") {
-    res.writeHead(200, { "content-type": "application/json" });
-    res.end(JSON.stringify({ ok: true, rooms: rooms.size }));
+    const sweepHealthy =
+      !ENABLE_TIMER_SWEEP || (sweepStatus.lastSuccessAt !== null && Date.now() - sweepStatus.lastSuccessAt < SWEEP_STALE_MS);
+    res.writeHead(sweepHealthy ? 200 : 503, { "content-type": "application/json" });
+    res.end(
+      JSON.stringify({
+        ok: sweepHealthy,
+        rooms: rooms.size,
+        timerSweep: {
+          enabled: ENABLE_TIMER_SWEEP,
+          lastSuccessAt: sweepStatus.lastSuccessAt ? new Date(sweepStatus.lastSuccessAt).toISOString() : null,
+          lastError: sweepStatus.lastError,
+          lastErrorAt: sweepStatus.lastErrorAt ? new Date(sweepStatus.lastErrorAt).toISOString() : null,
+        },
+      }),
+    );
     return;
   }
 
@@ -158,8 +189,15 @@ if (ENABLE_TIMER_SWEEP) {
     console.warn("⚠️  ENABLE_TIMER_SWEEP is on but DATABASE_URL is not set — the sweep will error every tick.");
   }
   sweepTimer = setInterval(() => {
-    closeExpiredLots().catch((err) => console.error("Timer sweep failed (auction lots):", err));
-    closeExpiredCityAuctions().catch((err) => console.error("Timer sweep failed (city auctions):", err));
+    Promise.all([closeExpiredLots(), closeExpiredCityAuctions()])
+      .then(() => {
+        sweepStatus.lastSuccessAt = Date.now();
+      })
+      .catch((err) => {
+        console.error("Timer sweep failed:", err);
+        sweepStatus.lastError = err instanceof Error ? err.message : String(err);
+        sweepStatus.lastErrorAt = Date.now();
+      });
   }, TIMER_SWEEP_INTERVAL_MS);
   console.log(`Timer sweep running every ${TIMER_SWEEP_INTERVAL_MS}ms.`);
 } else {

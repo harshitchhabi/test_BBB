@@ -1,6 +1,34 @@
 import { NextResponse } from "next/server";
+import { headers } from "next/headers";
 import { getSessionParticipant } from "./session";
 import { GameError, HTTP_STATUS_BY_CODE } from "game-engine";
+
+// Second CSRF layer, on top of the session cookie's SameSite=Lax
+// (which already blocks the practical cross-site POST/fetch attack on
+// its own): if the request carries an Origin header at all, its host
+// must match the request's own Host header. A same-origin fetch() from
+// this app always has them match; a cross-site page trying to POST
+// here would send its own Origin, which won't. A request with no
+// Origin header at all (common for a normal same-tab GET/navigation)
+// is allowed through — SameSite=Lax is what's actually protecting that
+// case. Behind a reverse proxy, this only works correctly if the proxy
+// forwards the original client Host header unchanged (nginx's default
+// `proxy_set_header Host $host;` does exactly that).
+async function assertSameOrigin() {
+  const hdrs = await headers();
+  const origin = hdrs.get("origin");
+  if (!origin) return;
+  const host = hdrs.get("host");
+  let originHost: string;
+  try {
+    originHost = new URL(origin).host;
+  } catch {
+    throw new GameError("forbidden", "Cross-origin request rejected.");
+  }
+  if (!host || originHost !== host) {
+    throw new GameError("forbidden", "Cross-origin request rejected.");
+  }
+}
 
 // Every command route (Section 8.1) starts the same way: who is signed
 // in, and do they exist as a participant. Centralized here so each route
@@ -10,6 +38,7 @@ import { GameError, HTTP_STATUS_BY_CODE } from "game-engine";
 // directly and returns the participant it already names — none of the
 // ~50 route files that call this needed to change.
 export async function requireParticipant() {
+  await assertSameOrigin();
   const participant = await getSessionParticipant();
   if (!participant) {
     throw new GameError("unauthorized", "Sign in required.");
