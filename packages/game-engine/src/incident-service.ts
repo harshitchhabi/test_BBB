@@ -16,11 +16,13 @@ import {
   bankPurchases,
   scoutReports,
   scoreSnapshots,
+  participants,
 } from "db/schema";
 import { GameError } from "./errors";
 import { recordAudit } from "./audit";
 import { runInTransaction, type Tx } from "./tx";
 import { assertStaffTx } from "./team-service";
+import { generatePassword, hashPassword } from "./auth-service";
 
 // Section 7.9 "Incidents" (Team withdrawal, balance adjustment, dispute
 // note, manual correction) and the CONTINGENCIES chapter's "Bidding and
@@ -318,6 +320,19 @@ export async function deleteTeam(params: { eventId: string; teamId: string; acto
     await tx.delete(teamMembers).where(eq(teamMembers.teamId, team.id));
 
     await tx.delete(teams).where(eq(teams.id, team.id));
+
+    // Free the owner's username for reuse rather than leaving it taken
+    // forever — same reasoning as team-service.ts's deleteStaffLogin:
+    // the participants row itself stays (audit_log and friends still
+    // reference it, by design), just renamed and de-credentialed so it
+    // can never log in again and the exact username string is available
+    // for the next team.
+    const [owner] = await tx.select().from(participants).where(eq(participants.id, team.ownerParticipantId)).for("update");
+    if (owner) {
+      const releasedUsername = `released-${owner.username}-${owner.id.slice(0, 8)}`;
+      const passwordHash = await hashPassword(generatePassword());
+      await tx.update(participants).set({ username: releasedUsername, passwordHash, sessionId: null }).where(eq(participants.id, owner.id));
+    }
 
     await recordAudit(tx, {
       eventId: params.eventId,

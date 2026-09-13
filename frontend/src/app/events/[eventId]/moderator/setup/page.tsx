@@ -34,6 +34,9 @@ export default function ModeratorSetupPage({ params }: { params: Promise<{ event
   const [staffBusy, setStaffBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [issuedCredential, setIssuedCredential] = useState<{ username: string; password: string } | null>(null);
+  const [staffList, setStaffList] = useState<Array<{ participantId: string; name: string; username: string }> | null>(null);
+  const [staffListError, setStaffListError] = useState<string | null>(null);
+  const [removeBusy, setRemoveBusy] = useState(false);
 
   const [overview, setOverview] = useState<any>(null);
   const [stageMessage, setStageMessage] = useState<string | null>(null);
@@ -56,9 +59,45 @@ export default function ModeratorSetupPage({ params }: { params: Promise<{ event
     if (res.ok) setOverview(await res.json());
   }, [eventId]);
 
+  const refreshStaffList = useCallback(async () => {
+    const res = await fetch(`/api/events/${eventId}/staff`);
+    const body = await res.json().catch(() => null);
+    if (res.ok) {
+      setStaffList(body.staff);
+      setStaffListError(null);
+    } else {
+      setStaffListError(body?.message ?? `Couldn't load staff (${res.status}).`);
+    }
+  }, [eventId]);
+
   useEffect(() => {
-    if (sessionStatus === "authenticated") refresh();
-  }, [sessionStatus, refresh]);
+    if (sessionStatus === "authenticated") {
+      refresh();
+      refreshStaffList();
+    }
+  }, [sessionStatus, refresh, refreshStaffList]);
+
+  // Frees the username for reuse without touching this login's history —
+  // see team-service.ts's deleteStaffLogin. Refuses to remove the last
+  // remaining staff login server-side, so this can't lock the event out.
+  async function removeStaff(participantId: string, name: string) {
+    if (removeBusy) return;
+    const reason = window.prompt(`Remove staff login "${name}"? This frees the username for reuse. Enter a reason to confirm, or cancel:`);
+    if (!reason) return;
+    setRemoveBusy(true);
+    try {
+      const res = await fetch(`/api/events/${eventId}/staff/${participantId}`, {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ reason }),
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) setStaffListError(body?.message ?? "Couldn't remove that staff login.");
+      else refreshStaffList();
+    } finally {
+      setRemoveBusy(false);
+    }
+  }
 
   async function addStaff() {
     if (staffBusy) return;
@@ -78,6 +117,7 @@ export default function ModeratorSetupPage({ params }: { params: Promise<{ event
         setIssuedCredential({ username: body.username, password: body.password });
         setStaffName("");
         setStaffUsername("");
+        refreshStaffList();
       }
     } finally {
       setStaffBusy(false);
@@ -289,6 +329,27 @@ export default function ModeratorSetupPage({ params }: { params: Promise<{ event
               Username: <strong>{issuedCredential.username}</strong> · Password: <strong>{issuedCredential.password}</strong>
             </p>
           </div>
+        )}
+      </Panel>
+
+      <Panel className="w-full max-w-lg mt-4">
+        <PanelTitle>CURRENT STAFF</PanelTitle>
+        {staffListError && <p className="text-red-300 mb-2">{staffListError}</p>}
+        {!staffListError && !staffList && <p className="text-white/70">Loading…</p>}
+        {staffList && staffList.length === 0 && <p className="text-white/70">No staff logins yet.</p>}
+        {staffList && staffList.length > 0 && (
+          <ul className="divide-y divide-white/10">
+            {staffList.map((s) => (
+              <li key={s.participantId} className="flex items-center justify-between gap-2 py-2">
+                <span className="text-white">
+                  {s.name} <span className="text-white/60">({s.username})</span>
+                </span>
+                <WoodButton variant="danger" disabled={removeBusy} onClick={() => removeStaff(s.participantId, s.name)}>
+                  Remove
+                </WoodButton>
+              </li>
+            ))}
+          </ul>
         )}
       </Panel>
 

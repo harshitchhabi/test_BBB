@@ -1,6 +1,34 @@
 import { NextResponse } from "next/server";
-import { createStaffLogin } from "game-engine";
+import { createStaffLogin, getParticipantContext } from "game-engine";
+import { isStaff } from "common";
+import { db, eq } from "db";
+import { eventStaff, participants } from "db/schema";
 import { requireParticipant, apiErrorResponse } from "@/lib/api";
+
+// GET /events/:id/staff — staff-only roster (name/username/participantId)
+// feeding the moderator setup page's staff list, which is what lets an
+// admin actually find a login to remove (see the DELETE route at
+// staff/[participantId]).
+export async function GET(_req: Request, { params }: { params: Promise<{ eventId: string }> }) {
+  try {
+    const { eventId } = await params;
+    const participant = await requireParticipant();
+    const ctx = await getParticipantContext(eventId, participant.id);
+    if (!isStaff(ctx)) {
+      return NextResponse.json({ error: "forbidden", message: "Moderators only." }, { status: 403 });
+    }
+
+    const rows = await db
+      .select({ participantId: eventStaff.participantId, name: participants.name, username: participants.username })
+      .from(eventStaff)
+      .innerJoin(participants, eq(eventStaff.participantId, participants.id))
+      .where(eq(eventStaff.eventId, eventId));
+
+    return NextResponse.json({ staff: rows });
+  } catch (err) {
+    return apiErrorResponse(err);
+  }
+}
 
 // POST /events/:id/staff — Task 1: staff are no longer "an
 // already-signed-in participant, added by email." This now mints a

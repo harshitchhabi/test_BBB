@@ -230,3 +230,48 @@ describe("Event staff bootstrap", () => {
     expect(first.staffRow.eventId).toBe(event.id);
   });
 });
+
+describe("deleteStaffLogin", () => {
+  it("removes the event_staff row and releases the username, but keeps the participant/audit trail", async () => {
+    const { event, moderator } = await createTestFixture(dbModule.db);
+    const second = await engine.createStaffLogin({ eventId: event.id, actorParticipantId: moderator.id, name: "Second Mod", username: `second-${event.id.slice(0, 8)}` });
+
+    const removed = await engine.deleteStaffLogin({ eventId: event.id, actorParticipantId: moderator.id, participantId: second.staffRow.participantId, reason: "No longer needed" });
+    expect(removed.participantId).toBe(second.staffRow.participantId);
+
+    // event_staff row is gone - this login is no longer staff.
+    const [staffRowAfter] = await dbModule.db.select().from(schema.eventStaff).where(dbModule.eq(schema.eventStaff.id, second.staffRow.id));
+    expect(staffRowAfter).toBeUndefined();
+
+    // The username is released (renamed + unusable), but the participant
+    // row itself still exists - same reasoning as deleteTeam's owner
+    // release.
+    const [participantAfter] = await dbModule.db.select().from(schema.participants).where(dbModule.eq(schema.participants.id, second.staffRow.participantId));
+    expect(participantAfter).toBeDefined();
+    expect(participantAfter.username).toMatch(/^released-/);
+    expect(participantAfter.sessionId).toBeNull();
+
+    // The freed username can now be reused by a brand-new login.
+    const reused = await engine.createStaffLogin({ eventId: event.id, actorParticipantId: moderator.id, name: "Reused Name", username: `second-${event.id.slice(0, 8)}` });
+    expect(reused.username).toBe(`second-${event.id.slice(0, 8)}`);
+  });
+
+  it("refuses to remove the only remaining staff login for an event", async () => {
+    const { event, moderator } = await createTestFixture(dbModule.db);
+    await expect(
+      engine.deleteStaffLogin({ eventId: event.id, actorParticipantId: moderator.id, participantId: moderator.id, reason: "trying to self-lockout" }),
+    ).rejects.toMatchObject({ code: "conflict" });
+  });
+
+  it("requires staff status and a reason", async () => {
+    const { event, moderator, teamA } = await createTestFixture(dbModule.db);
+    const second = await engine.createStaffLogin({ eventId: event.id, actorParticipantId: moderator.id, name: "Second Mod", username: `second2-${event.id.slice(0, 8)}` });
+
+    await expect(
+      engine.deleteStaffLogin({ eventId: event.id, actorParticipantId: teamA.member.id, participantId: second.staffRow.participantId, reason: "x" }),
+    ).rejects.toMatchObject({ code: "forbidden" });
+    await expect(
+      engine.deleteStaffLogin({ eventId: event.id, actorParticipantId: moderator.id, participantId: second.staffRow.participantId, reason: "" }),
+    ).rejects.toMatchObject({ code: "conflict" });
+  });
+});

@@ -65,6 +65,17 @@ describe("deleteTeam", () => {
     // teamA's own bid row is gone.
     const teamABids = await dbModule.db.select().from(schema.bids).where(dbModule.eq(schema.bids.teamId, teamA.team.id));
     expect(teamABids).toHaveLength(0);
+
+    // The deleted team's owner login is released for reuse, not left
+    // permanently taken: renamed, unguessable password, no session - but
+    // the participants row itself survives (its bid/audit history above
+    // still references it by id).
+    const [releasedOwner] = await dbModule.db.select().from(schema.participants).where(dbModule.eq(schema.participants.id, teamA.leader.id));
+    expect(releasedOwner).toBeDefined();
+    expect(releasedOwner.username).not.toBe(teamA.leader.username);
+    expect(releasedOwner.username).toMatch(/^released-/);
+    expect(releasedOwner.passwordHash).not.toBe(teamA.leader.passwordHash);
+    expect(releasedOwner.sessionId).toBeNull();
   });
 
   it("requires a reason and staff status", async () => {

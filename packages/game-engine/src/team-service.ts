@@ -359,6 +359,71 @@ export async function resetLoginPassword(params: {
   });
 }
 
+// Staff-only: removes a staff login's access to this event and frees its
+// username for reuse. This does NOT delete the underlying participants
+// row — audit_log, bank_purchases.approved_by, constructed_buildings
+// .verified_by, and others all reference participants.id with no
+// cascade, by design (see incident-service.ts's deleteTeam comment: "the
+// ledger stays a complete, honest history of what actually happened").
+// Deleting the row outright would either violate those foreign keys or
+// require nulling out who-did-what across the audit trail, which this
+// app deliberately never does. Instead: the event_staff row is removed,
+// and the login itself is renamed to a "released-..." form with an
+// unusable password and no session, so the exact username string can be
+// reused for a brand-new login while the old one's history stays intact
+// and unreachable.
+export async function deleteStaffLogin(params: {
+  eventId: string;
+  actorParticipantId: string;
+  participantId: string;
+  reason: string;
+}) {
+  return runInTransaction(async (tx, queueBroadcast) => {
+    await assertStaffTx(tx, params.eventId, params.actorParticipantId);
+    if (!params.reason.trim()) throw new GameError("conflict", "A reason is required to remove a staff login.");
+
+    const [staffRow] = await tx
+      .select()
+      .from(eventStaff)
+      .where(and(eq(eventStaff.eventId, params.eventId), eq(eventStaff.participantId, params.participantId)))
+      .for("update");
+    if (!staffRow) throw new GameError("not_found", "Staff login not found for this event.");
+
+    // Never let this be the move that locks everyone out of the event -
+    // the bootstrap rule in createStaffLogin only reopens the "anyone can
+    // claim the first slot" path to the event's original creator, who
+    // may not even still have a usable login themselves.
+    const allStaff = await tx.select({ id: eventStaff.id }).from(eventStaff).where(eq(eventStaff.eventId, params.eventId));
+    if (allStaff.length <= 1) {
+      throw new GameError("conflict", "Cannot remove the only remaining staff login for this event.");
+    }
+
+    const [participant] = await tx.select().from(participants).where(eq(participants.id, params.participantId)).for("update");
+    if (!participant) throw new GameError("not_found", "Login not found.");
+
+    await tx.delete(eventStaff).where(eq(eventStaff.id, staffRow.id));
+
+    const releasedUsername = `released-${participant.username}-${participant.id.slice(0, 8)}`;
+    const passwordHash = await hashPassword(generatePassword());
+    await tx.update(participants).set({ username: releasedUsername, passwordHash, sessionId: null }).where(eq(participants.id, participant.id));
+
+    await recordAudit(tx, {
+      eventId: params.eventId,
+      actorParticipantId: params.actorParticipantId,
+      reason: params.reason,
+      isOverride: true,
+      action: "staff_login.deleted",
+      entityType: "event_staff",
+      entityId: staffRow.id,
+      beforeJson: { participantId: participant.id, username: participant.username },
+    });
+
+    queueBroadcast({ eventId: params.eventId, type: "moderator.announcement", data: { removedStaffParticipantId: participant.id } });
+
+    return { participantId: participant.id };
+  });
+}
+
 // ---------------------------------------------------------------------
 // Leaving a team / transferring leadership
 // ---------------------------------------------------------------------
