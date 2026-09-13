@@ -1,0 +1,25 @@
+[Unit]
+Description=Bricks by Bid - frontend (Next.js)
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=bbb
+WorkingDirectory=/opt/bricksbybid/frontend
+EnvironmentFile=/etc/bricksbybid/frontend.env
+# `next start` is the production server for an already-built app (see
+# deploy/scripts/deploy.sh, which runs `next build` before every
+# restart) — NOT `next dev`. Next.js forces NODE_ENV=production for
+# both build and start regardless of the shell's own env, which is what
+# gives the session cookie its `secure` flag automatically.
+ExecStart=/usr/bin/npm run start
+Restart=on-failure
+RestartSec=5
+# Postgres/backend hiccups shouldn't spiral into a restart loop that
+# never gives them time to recover.
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,7 @@
+# Shell scripts and server config in deploy/ run on Ubuntu - a CRLF
+# shebang line (`#!/usr/bin/env bash\r`) fails with "bad interpreter" on
+# Linux, so force LF regardless of what line endings a Windows checkout
+# would otherwise apply.
+deploy/scripts/*.sh eol=lf
+deploy/nginx/*.conf eol=lf
+deploy/systemd/*.service eol=lf

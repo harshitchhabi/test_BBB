@@ -1,0 +1,18 @@
+[Unit]
+Description=Bricks by Bid - backend (WebSocket relay + timer sweep)
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=bbb
+WorkingDirectory=/opt/bricksbybid/backend
+EnvironmentFile=/etc/bricksbybid/backend.env
+ExecStart=/usr/bin/npm run start
+Restart=on-failure
+RestartSec=5
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Install]
+WantedBy=multi-user.target
