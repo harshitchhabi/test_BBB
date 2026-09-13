@@ -15,7 +15,12 @@ export const eventStatusEnum = pgEnum("event_status", [
   "paused",
 ]);
 
-export const eventStaffRoleEnum = pgEnum("event_staff_role", ["moderator", "admin"]);
+// Was ("moderator", "admin") — merged into one role. Nothing in the
+// authorization code ever branched on the difference (isStaff() only
+// ever checked "is this row present at all"), so the split was a stored
+// label with no behavioral meaning. See the accompanying migration for
+// the backfill of existing rows.
+export const eventStaffRoleEnum = pgEnum("event_staff_role", ["staff"]);
 
 export const teamStatusEnum = pgEnum("team_status", ["active", "withdrawn", "disqualified"]);
 

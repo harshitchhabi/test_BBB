@@ -1,15 +1,31 @@
 import { pgTable, text, uuid, timestamp, integer, boolean, uniqueIndex } from "drizzle-orm/pg-core";
 import { eventStatusEnum, eventStaffRoleEnum, teamStatusEnum, teamMemberRoleEnum } from "./enums";
 
-// participants: kept from the legacy schema almost unchanged. It is the
-// global Google-login identity (see legacy frontend/src/auth.ts signIn
-// callback) and is intentionally NOT event-scoped — the same person can play
-// in multiple events over time. Everything event-scoped hangs off
-// team_members / event_staff instead.
+// participants: the identity behind every login. Originally a Google
+// OAuth identity keyed by email; replaced with admin-issued username +
+// password credentials (Task 1) since this is an internal event with
+// ~20-30 shared team logins and a handful of staff logins, not a public
+// self-serve system. It is intentionally NOT event-scoped — the same
+// login could in principle play in multiple events over time, though in
+// practice one deployment serves one event. Everything event-scoped
+// still hangs off team_members / event_staff, unchanged.
+//
+// email is now optional — kept only as a backup contact field an admin
+// may fill in (e.g. to reach a team's leader outside the app), never
+// used for login or lookup.
 export const participants = pgTable("participants", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
-  email: text("email").notNull().unique(),
+  email: text("email").unique(),
+  username: text("username").notNull().unique(),
+  passwordHash: text("password_hash").notNull(),
+  // Set on login, cleared on logout or when an admin reissues this
+  // login's password. Every authenticated request re-checks this against
+  // the session cookie's own copy — a mismatch means a newer login (or an
+  // admin-forced reset) superseded this session, so the old cookie is
+  // refused even though it hasn't expired yet. One active session per
+  // login at a time, matching "one shared credential per team."
+  sessionId: text("session_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
 });
 
@@ -64,7 +80,8 @@ export const eventSettings = pgTable("event_settings", {
   advancedCityScoringPenalty: integer("advanced_city_scoring_penalty").notNull().default(1),
 });
 
-// event_staff: moderators/admins assigned to run a specific event. Distinct
+// event_staff: staff assigned to run a specific event (the "moderator"
+// vs "admin" split was merged into one role — see enums.ts). Distinct
 // from team_members — staff never belong to a team.
 export const eventStaff = pgTable(
   "event_staff",
@@ -76,7 +93,7 @@ export const eventStaff = pgTable(
     participantId: uuid("participant_id")
       .notNull()
       .references(() => participants.id, { onDelete: "cascade" }),
-    role: eventStaffRoleEnum("role").notNull().default("moderator"),
+    role: eventStaffRoleEnum("role").notNull().default("staff"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => ({

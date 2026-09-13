@@ -14,6 +14,7 @@
     "seed": "tsx seed/run.ts"
   },
   "dependencies": {
+    "bcryptjs": "^3.0.3",
     "dotenv": "^16.5.0",
     "drizzle-kit": "^0.31.4",
     "drizzle-orm": "^0.44.3",

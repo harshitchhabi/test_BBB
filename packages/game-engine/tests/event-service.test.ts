@@ -29,8 +29,8 @@ describe("Event stage control (setEventStatus)", () => {
   it("walks an event through the full sequence and rejects skipping a stage", async () => {
     const [event] = await dbModule.db.insert(schema.events).values({ name: "Stage Control Test" }).returning();
     await dbModule.db.insert(schema.eventSettings).values({ eventId: event.id });
-    const [moderator] = await dbModule.db.insert(schema.participants).values({ name: "Mod", email: `mod-${event.id}@test.local` }).returning();
-    await dbModule.db.insert(schema.eventStaff).values({ eventId: event.id, participantId: moderator.id, role: "moderator" });
+    const [moderator] = await dbModule.db.insert(schema.participants).values({ name: "Mod", email: `mod-${event.id}@test.local`, username: `mod-${event.id}`, passwordHash: "$2a$10$CwTycUXWue0Thq9StjUM0uJ8oxL/Yjyq6XvXqAtVvjGdiWZOWXQNi" }).returning();
+    await dbModule.db.insert(schema.eventStaff).values({ eventId: event.id, participantId: moderator.id, role: "staff" });
 
     expect(event.status).toBe("setup");
 
@@ -52,7 +52,7 @@ describe("Event stage control (setEventStatus)", () => {
       .insert(schema.materialTypes)
       .values({ eventId: event.id, key: "bricks", name: "Bricks", unitLabel: "units", stickerPrice: 1, isRare: false, isBonusOnly: false, sortOrder: 1, defaultLotQuantity: 100, defaultOpeningBid: 100 })
       .returning();
-    const [leader] = await dbModule.db.insert(schema.participants).values({ name: "Leader", email: `leader-${event.id}@test.local` }).returning();
+    const [leader] = await dbModule.db.insert(schema.participants).values({ name: "Leader", email: `leader-${event.id}@test.local`, username: `leader-${event.id}`, passwordHash: "$2a$10$CwTycUXWue0Thq9StjUM0uJ8oxL/Yjyq6XvXqAtVvjGdiWZOWXQNi" }).returning();
     const [team] = await dbModule.db.insert(schema.teams).values({ eventId: event.id, name: "A", code: "AAAAAA", ownerParticipantId: leader.id }).returning();
     await dbModule.db.insert(schema.teamMembers).values({ eventId: event.id, teamId: team.id, participantId: leader.id, role: "leader" });
 
@@ -62,9 +62,9 @@ describe("Event stage control (setEventStatus)", () => {
 
   it("requires a reason to pause, and rejects a non-staff actor", async () => {
     const [event] = await dbModule.db.insert(schema.events).values({ name: "Pause Test", status: "lobby" }).returning();
-    const [moderator] = await dbModule.db.insert(schema.participants).values({ name: "Mod", email: `mod2-${event.id}@test.local` }).returning();
-    await dbModule.db.insert(schema.eventStaff).values({ eventId: event.id, participantId: moderator.id, role: "moderator" });
-    const [randomPerson] = await dbModule.db.insert(schema.participants).values({ name: "Random", email: `random-${event.id}@test.local` }).returning();
+    const [moderator] = await dbModule.db.insert(schema.participants).values({ name: "Mod", email: `mod2-${event.id}@test.local`, username: `mod2-${event.id}`, passwordHash: "$2a$10$CwTycUXWue0Thq9StjUM0uJ8oxL/Yjyq6XvXqAtVvjGdiWZOWXQNi" }).returning();
+    await dbModule.db.insert(schema.eventStaff).values({ eventId: event.id, participantId: moderator.id, role: "staff" });
+    const [randomPerson] = await dbModule.db.insert(schema.participants).values({ name: "Random", email: `random-${event.id}@test.local`, username: `random-${event.id}`, passwordHash: "$2a$10$CwTycUXWue0Thq9StjUM0uJ8oxL/Yjyq6XvXqAtVvjGdiWZOWXQNi" }).returning();
 
     await expect(
       engine.setEventStatus({ eventId: event.id, status: "paused", actorParticipantId: moderator.id }),

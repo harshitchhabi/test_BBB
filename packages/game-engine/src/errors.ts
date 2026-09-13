@@ -16,6 +16,7 @@ export type GameErrorCode =
   | "trade_limit_reached"
   | "recipe_incomplete"
   | "already_has_city"
+  | "invalid_input"
   | "conflict";
 
 export class GameError extends Error {
@@ -39,5 +40,6 @@ export const HTTP_STATUS_BY_CODE: Record<GameErrorCode, number> = {
   trade_limit_reached: 400,
   recipe_incomplete: 400,
   already_has_city: 409,
+  invalid_input: 400,
   conflict: 409,
 };

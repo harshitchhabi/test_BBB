@@ -9,8 +9,8 @@ export async function createStage3Fixture(db: typeof DbType, opts?: { advancedCi
     leftoverScoringEnabled: opts?.leftoverScoringEnabled ?? false,
   });
 
-  const [moderator] = await db.insert(participants).values({ name: "Mod", email: `mod-${event.id}@test.local` }).returning();
-  await db.insert(eventStaff).values({ eventId: event.id, participantId: moderator.id, role: "moderator" });
+  const [moderator] = await db.insert(participants).values({ name: "Mod", email: `mod-${event.id}@test.local`, username: `mod-${event.id}`, passwordHash: "$2a$10$CwTycUXWue0Thq9StjUM0uJ8oxL/Yjyq6XvXqAtVvjGdiWZOWXQNi" }).returning();
+  await db.insert(eventStaff).values({ eventId: event.id, participantId: moderator.id, role: "staff" });
 
   const [metroCity] = await db
     .insert(cities)
@@ -24,11 +24,11 @@ export async function createStage3Fixture(db: typeof DbType, opts?: { advancedCi
   async function createTeamWithLeader(name: string, auctionTokens: number, cityWalletTokens: number) {
     const [leader] = await db
       .insert(participants)
-      .values({ name: `${name} Leader`, email: `${name.toLowerCase()}-${event.id}@test.local` })
+      .values({ name: `${name} Leader`, email: `${name.toLowerCase()}-${event.id}@test.local`, username: `${name.toLowerCase()}-leader-${event.id}`, passwordHash: "$2a$10$CwTycUXWue0Thq9StjUM0uJ8oxL/Yjyq6XvXqAtVvjGdiWZOWXQNi" })
       .returning();
     const [member] = await db
       .insert(participants)
-      .values({ name: `${name} Member`, email: `${name.toLowerCase()}-member-${event.id}@test.local` })
+      .values({ name: `${name} Member`, email: `${name.toLowerCase()}-member-${event.id}@test.local`, username: `${name.toLowerCase()}-member-${event.id}`, passwordHash: "$2a$10$CwTycUXWue0Thq9StjUM0uJ8oxL/Yjyq6XvXqAtVvjGdiWZOWXQNi" })
       .returning();
     const [team] = await db
       .insert(teams)

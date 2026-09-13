@@ -1,7 +1,7 @@
 "use client";
 
 import { use, useCallback, useEffect, useState } from "react";
-import { useSession } from "next-auth/react";
+import { useSession } from "@/lib/use-session";
 import { ModNav } from "../mod-nav";
 import { PageFrame } from "@/components/theme/PageFrame";
 import { HeaderBanner } from "@/components/theme/HeaderBanner";
@@ -29,9 +29,11 @@ const STAGE_LABELS: Record<string, string> = {
 export default function ModeratorSetupPage({ params }: { params: Promise<{ eventId: string }> }) {
   const { eventId } = use(params);
   const { status: sessionStatus } = useSession();
-  const [email, setEmail] = useState("");
-  const [role, setRole] = useState<"moderator" | "admin">("moderator");
+  const [staffName, setStaffName] = useState("");
+  const [staffUsername, setStaffUsername] = useState("");
+  const [staffBusy, setStaffBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [issuedCredential, setIssuedCredential] = useState<{ username: string; password: string } | null>(null);
 
   const [overview, setOverview] = useState<any>(null);
   const [stageMessage, setStageMessage] = useState<string | null>(null);
@@ -53,15 +55,27 @@ export default function ModeratorSetupPage({ params }: { params: Promise<{ event
   }, [sessionStatus, refresh]);
 
   async function addStaff() {
+    if (staffBusy) return;
+    setStaffBusy(true);
     setMessage(null);
-    const res = await fetch(`/api/events/${eventId}/staff`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ targetEmail: email, role }),
-    });
-    const body = await res.json();
-    setMessage(res.ok ? `Added ${email} as ${role}.` : body.message);
-    if (res.ok) setEmail("");
+    setIssuedCredential(null);
+    try {
+      const res = await fetch(`/api/events/${eventId}/staff`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: staffName, username: staffUsername }),
+      });
+      const body = await res.json();
+      if (!res.ok) {
+        setMessage(body.message);
+      } else {
+        setIssuedCredential({ username: body.username, password: body.password });
+        setStaffName("");
+        setStaffUsername("");
+      }
+    } finally {
+      setStaffBusy(false);
+    }
   }
 
   async function advanceTo(nextStatus: string) {
@@ -189,20 +203,27 @@ export default function ModeratorSetupPage({ params }: { params: Promise<{ event
       </Panel>
 
       <Panel className="w-full max-w-lg">
-        <PanelTitle>ADD A MODERATOR</PanelTitle>
+        <PanelTitle>CREATE A STAFF LOGIN</PanelTitle>
         <p className="text-white/70 text-sm mb-3">
-          The person must have signed in at least once. If nobody is staff for this event yet, anyone can add the
-          first one; after that, only existing staff can add more.
+          Issues a brand-new username + password for this event's staff console. If nobody is staff for this event
+          yet, anyone can create the first one; after that, only existing staff can create more.
         </p>
         <div className="flex gap-2 flex-wrap">
-          <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="their-email@example.com" className="flex-1 min-w-48 px-3 py-2 rounded text-black" />
-          <select value={role} onChange={(e) => setRole(e.target.value as "moderator" | "admin")} className="px-2 py-2 rounded text-black">
-            <option value="moderator">moderator</option>
-            <option value="admin">admin</option>
-          </select>
-          <WoodButton variant="primary" onClick={addStaff} disabled={!email}>Add</WoodButton>
+          <input value={staffName} onChange={(e) => setStaffName(e.target.value)} placeholder="Name (e.g. 'Front desk')" className="flex-1 min-w-40 px-3 py-2 rounded text-black" />
+          <input value={staffUsername} onChange={(e) => setStaffUsername(e.target.value)} placeholder="username" className="flex-1 min-w-32 px-3 py-2 rounded text-black" />
+          <WoodButton variant="primary" onClick={addStaff} disabled={staffBusy || !staffName || !staffUsername}>
+            {staffBusy ? "Creating…" : "Create"}
+          </WoodButton>
         </div>
-        {message && <p className="text-yellow-300 mt-3">{message}</p>}
+        {message && <p className="text-red-300 mt-3">{message}</p>}
+        {issuedCredential && (
+          <div className="mt-3 bg-black/40 rounded p-3 text-sm">
+            <p className="text-yellow-300 font-bold">Shown once — write it down now:</p>
+            <p className="text-white">
+              Username: <strong>{issuedCredential.username}</strong> · Password: <strong>{issuedCredential.password}</strong>
+            </p>
+          </div>
+        )}
       </Panel>
 
       <p className="mt-6 text-white/70 max-w-lg text-center">

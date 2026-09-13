@@ -4,25 +4,25 @@
 // It deliberately does NOT create teams, rounds, lots, or any Stage
 // 1-3 runtime state — those are Phase 1+ concerns.
 //
-// Usage: DATABASE_URL=... npx tsx seed/run.ts ["Event name"] ["creator@email.com"]
+// Usage: DATABASE_URL=... npx tsx seed/run.ts ["Event name"] ["admin-username"]
 //
-// The creator email is optional but strongly recommended: it's stored as
-// events.created_by and becomes the ONLY participant allowed to claim the
-// first moderator slot for this event (see addEventStaff in
-// packages/game-engine/src/team-service.ts) — without it, bootstrap falls
-// back to "whoever claims it first," which is a real gap if the event
-// id/link ever leaks before you get to /moderator/setup yourself. The
-// email must belong to someone who has already signed into the app at
-// least once (participants only exist after a Google sign-in), so seed
-// the event, have your organizer account sign in once, then run the seed
-// again with their email if you skipped it the first time — or just add
-// yourself as staff manually via addEventStaff/the setup screen while
-// created_by is still null, before sharing the link with anyone else.
+// Task 1: Google OAuth is gone, so there's no more "have the organizer
+// sign in once first, then re-run the seed with their email." The admin
+// username is optional but strongly recommended — when given, this
+// mints the organizer's staff login directly (bcrypt-hashed password,
+// printed once) and records events.created_by pointing at it, so the
+// event never has a moment where its first staff slot is unclaimed and
+// up for grabs by whoever gets to /moderator/setup first. Skip it only
+// for local/dev use; you can still add staff manually afterward as long
+// as you get there before anyone else does.
 import "dotenv/config";
+import { randomBytes } from "crypto";
+import bcrypt from "bcryptjs";
 import { db, eq } from "../index";
 import {
   events,
   eventSettings,
+  eventStaff,
   materialTypes,
   marketShockCards,
   buildingRecipes,
@@ -40,25 +40,44 @@ import {
   openingBidForTier,
 } from "./data";
 
-async function seed(eventName: string, creatorEmail?: string) {
+const PASSWORD_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
+
+function generatePassword(length = 10): string {
+  const bytes = randomBytes(length);
+  let out = "";
+  for (let i = 0; i < length; i++) out += PASSWORD_ALPHABET[bytes[i] % PASSWORD_ALPHABET.length];
+  return out;
+}
+
+async function seed(eventName: string, adminUsername?: string) {
+  let issuedPassword: string | null = null;
+
   await db.transaction(async (tx) => {
     let createdBy: string | undefined;
-    if (creatorEmail) {
-      const [creator] = await tx.select().from(participants).where(eq(participants.email, creatorEmail));
-      if (!creator) {
-        throw new Error(
-          `No participant with email "${creatorEmail}" has signed in yet. Have them sign into the app once first, then re-run this seed.`,
-        );
+
+    if (adminUsername) {
+      const username = adminUsername.trim().toLowerCase();
+      const [existing] = await tx.select({ id: participants.id }).from(participants).where(eq(participants.username, username));
+      if (existing) {
+        throw new Error(`Username "${username}" already exists. Pick a different one, or add staff later via the app.`);
       }
-      createdBy = creator.id;
+      issuedPassword = generatePassword();
+      const passwordHash = await bcrypt.hash(issuedPassword, 10);
+      const [admin] = await tx.insert(participants).values({ name: "Event Admin", username, passwordHash }).returning();
+      createdBy = admin.id;
     } else {
       console.warn(
-        "⚠️  No creator email given — this event's first moderator slot will be open to whoever claims it first. Pass an email to lock it down: npx tsx seed/run.ts \"Event name\" you@email.com",
+        '⚠️  No admin username given — this event has no staff login yet, and its first staff slot is open to whoever claims it first via the app. Pass a username to avoid that: npx tsx seed/run.ts "Event name" admin-username',
       );
     }
 
     const [event] = await tx.insert(events).values({ name: eventName, createdBy }).returning();
-    console.log(`Created event ${event.id} (${event.name})${createdBy ? ` — created_by locked to ${creatorEmail}` : ""}`);
+    console.log(`Created event ${event.id} (${event.name})`);
+
+    if (createdBy) {
+      await tx.insert(eventStaff).values({ eventId: event.id, participantId: createdBy });
+      console.log(`Created the admin login and made it staff for this event.`);
+    }
 
     await tx.insert(eventSettings).values({ eventId: event.id });
 
@@ -160,11 +179,17 @@ async function seed(eventName: string, creatorEmail?: string) {
 
     console.log(`\nEvent ${event.id} is ready for moderator review before any team/auction data is created.`);
   });
+
+  if (adminUsername && issuedPassword) {
+    console.log(`\nAdmin login — shown once, write it down now:`);
+    console.log(`  Username: ${adminUsername.trim().toLowerCase()}`);
+    console.log(`  Password: ${issuedPassword}`);
+  }
 }
 
 const eventName = process.argv[2] ?? "Bricks by Bid";
-const creatorEmail = process.argv[3];
-seed(eventName, creatorEmail)
+const adminUsername = process.argv[3];
+seed(eventName, adminUsername)
   .then(() => process.exit(0))
   .catch((err) => {
     console.error("Seed failed:", err);

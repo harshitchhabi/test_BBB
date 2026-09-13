@@ -29,8 +29,8 @@ describe("resetEventForNewRound", () => {
   it("wipes all runtime state but keeps materials/recipes/cities config, and a fresh round can start clean", async () => {
     const [event] = await dbModule.db.insert(schema.events).values({ name: "Reset Test", status: "lobby" }).returning();
     await dbModule.db.insert(schema.eventSettings).values({ eventId: event.id });
-    const [moderator] = await dbModule.db.insert(schema.participants).values({ name: "Mod", email: `mod-${event.id}@test.local` }).returning();
-    await dbModule.db.insert(schema.eventStaff).values({ eventId: event.id, participantId: moderator.id, role: "admin" });
+    const [moderator] = await dbModule.db.insert(schema.participants).values({ name: "Mod", email: `mod-${event.id}@test.local`, username: `mod-${event.id}`, passwordHash: "$2a$10$CwTycUXWue0Thq9StjUM0uJ8oxL/Yjyq6XvXqAtVvjGdiWZOWXQNi" }).returning();
+    await dbModule.db.insert(schema.eventStaff).values({ eventId: event.id, participantId: moderator.id, role: "staff" });
 
     const [material] = await dbModule.db
       .insert(schema.materialTypes)
@@ -43,7 +43,7 @@ describe("resetEventForNewRound", () => {
     // just enough runtime state across enough tables to prove the wipe
     // actually reaches all of them.
     await engine.setEventStatus({ eventId: event.id, status: "stage_1", actorParticipantId: moderator.id });
-    const [leader1] = await dbModule.db.insert(schema.participants).values({ name: "Leader1", email: `leader1-${event.id}@test.local` }).returning();
+    const [leader1] = await dbModule.db.insert(schema.participants).values({ name: "Leader1", email: `leader1-${event.id}@test.local`, username: `leader1-${event.id}`, passwordHash: "$2a$10$CwTycUXWue0Thq9StjUM0uJ8oxL/Yjyq6XvXqAtVvjGdiWZOWXQNi" }).returning();
     const [team1] = await dbModule.db.insert(schema.teams).values({ eventId: event.id, name: "Round1Team", code: "R1TEAM", ownerParticipantId: leader1.id }).returning();
     await dbModule.db.insert(schema.teamMembers).values({ eventId: event.id, teamId: team1.id, participantId: leader1.id, role: "leader" });
 
@@ -100,7 +100,7 @@ describe("resetEventForNewRound", () => {
     // Round 2 can now start completely clean: a new team, using the same
     // event id/link, same material config.
     await engine.setEventStatus({ eventId: event.id, status: "lobby", actorParticipantId: moderator.id });
-    const [leader2] = await dbModule.db.insert(schema.participants).values({ name: "Leader2", email: `leader2-${event.id}@test.local` }).returning();
+    const [leader2] = await dbModule.db.insert(schema.participants).values({ name: "Leader2", email: `leader2-${event.id}@test.local`, username: `leader2-${event.id}`, passwordHash: "$2a$10$CwTycUXWue0Thq9StjUM0uJ8oxL/Yjyq6XvXqAtVvjGdiWZOWXQNi" }).returning();
     const team2 = await engine.createTeam({ eventId: event.id, ownerParticipantId: leader2.id, name: "Round2Team" });
     expect(team2.auctionTokens).toBe(1000); // fresh starting balance, not round 1's leftover
 
@@ -111,9 +111,9 @@ describe("resetEventForNewRound", () => {
 
   it("requires a reason and staff status", async () => {
     const [event] = await dbModule.db.insert(schema.events).values({ name: "Reset Auth Test" }).returning();
-    const [moderator] = await dbModule.db.insert(schema.participants).values({ name: "Mod", email: `mod2-${event.id}@test.local` }).returning();
-    await dbModule.db.insert(schema.eventStaff).values({ eventId: event.id, participantId: moderator.id, role: "moderator" });
-    const [randomPerson] = await dbModule.db.insert(schema.participants).values({ name: "Random", email: `random-${event.id}@test.local` }).returning();
+    const [moderator] = await dbModule.db.insert(schema.participants).values({ name: "Mod", email: `mod2-${event.id}@test.local`, username: `mod2-${event.id}`, passwordHash: "$2a$10$CwTycUXWue0Thq9StjUM0uJ8oxL/Yjyq6XvXqAtVvjGdiWZOWXQNi" }).returning();
+    await dbModule.db.insert(schema.eventStaff).values({ eventId: event.id, participantId: moderator.id, role: "staff" });
+    const [randomPerson] = await dbModule.db.insert(schema.participants).values({ name: "Random", email: `random-${event.id}@test.local`, username: `random-${event.id}`, passwordHash: "$2a$10$CwTycUXWue0Thq9StjUM0uJ8oxL/Yjyq6XvXqAtVvjGdiWZOWXQNi" }).returning();
 
     await expect(
       engine.resetEventForNewRound({ eventId: event.id, actorParticipantId: randomPerson.id, reason: "test" }),

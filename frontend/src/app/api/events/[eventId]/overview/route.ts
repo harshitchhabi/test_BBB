@@ -23,14 +23,27 @@ export async function GET(_req: Request, { params }: { params: Promise<{ eventId
     const [settings] = await db.select().from(eventSettings).where(eq(eventSettings.eventId, eventId));
 
     const teamRows = await db
-      .select({ id: teams.id, name: teams.name, code: teams.code, auctionTokens: teams.auctionTokens, cityWalletTokens: teams.cityWalletTokens, tradeCount: teams.tradeCount, status: teams.status })
+      .select({
+        id: teams.id,
+        name: teams.name,
+        code: teams.code,
+        auctionTokens: teams.auctionTokens,
+        cityWalletTokens: teams.cityWalletTokens,
+        tradeCount: teams.tradeCount,
+        status: teams.status,
+        ownerParticipantId: teams.ownerParticipantId,
+      })
       .from(teams)
       .where(eq(teams.eventId, eventId));
 
     const staff = isStaff(ctx);
     const visibleTeams = staff
       ? teamRows
-      : teamRows.map((t) => (t.id === ctx.team?.teamId ? t : { id: t.id, name: t.name, status: t.status, code: null, auctionTokens: null, cityWalletTokens: null, tradeCount: null }));
+      : teamRows.map((t) =>
+          t.id === ctx.team?.teamId
+            ? t
+            : { id: t.id, name: t.name, status: t.status, code: null, auctionTokens: null, cityWalletTokens: null, tradeCount: null, ownerParticipantId: null },
+        );
 
     const myTeam = teamRows.find((t) => t.id === ctx.team?.teamId) ?? null;
 

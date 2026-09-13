@@ -133,37 +133,61 @@ describe("Manual correction rehearsal scenarios (Section 10 / CONTINGENCIES)", (
 });
 
 describe("Event staff bootstrap", () => {
+  const testPasswordHash = "$2a$10$CwTycUXWue0Thq9StjUM0uJ8oxL/Yjyq6XvXqAtVvjGdiWZOWXQNi";
+
   it("when created_by is set, only that participant can claim the first staff slot", async () => {
-    const [organizer] = await dbModule.db.insert(schema.participants).values({ name: "Organizer", email: `organizer-${Date.now()}@test.local` }).returning();
-    const [randomPerson] = await dbModule.db.insert(schema.participants).values({ name: "Random", email: `random-${Date.now()}@test.local` }).returning();
-    const [secondMod] = await dbModule.db.insert(schema.participants).values({ name: "SecondMod", email: `secondmod-${Date.now()}@test.local` }).returning();
+    const [organizer] = await dbModule.db
+      .insert(schema.participants)
+      .values({ name: "Organizer", username: `organizer-${Date.now()}`, passwordHash: testPasswordHash })
+      .returning();
+    const [randomPerson] = await dbModule.db
+      .insert(schema.participants)
+      .values({ name: "Random", username: `random-${Date.now()}`, passwordHash: testPasswordHash })
+      .returning();
     const [event] = await dbModule.db.insert(schema.events).values({ name: "Bootstrap Test (locked)", createdBy: organizer.id }).returning();
 
-    // A random signed-in participant can no longer grab the first slot
-    // just by getting there first — this is the loophole being closed.
+    // A random participant can no longer grab the first slot just by
+    // getting there first — this is the loophole being closed.
     await expect(
-      engine.addEventStaff({ eventId: event.id, requesterParticipantId: randomPerson.id, targetEmail: randomPerson.email, role: "moderator" }),
+      engine.createStaffLogin({ eventId: event.id, actorParticipantId: randomPerson.id, name: "Should fail", username: `nope-${Date.now()}` }),
     ).rejects.toMatchObject({ code: "forbidden" });
 
-    // The actual creator can claim it (for themselves or someone else).
-    const first = await engine.addEventStaff({ eventId: event.id, requesterParticipantId: organizer.id, targetEmail: organizer.email, role: "moderator" });
-    expect(first.participantId).toBe(organizer.id);
+    // The actual creator can claim it — this mints the first staff login
+    // (a brand-new participant; createStaffLogin never promotes the
+    // caller's own identity, it always creates one).
+    const first = await engine.createStaffLogin({ eventId: event.id, actorParticipantId: organizer.id, name: "First Mod", username: `firstmod-${Date.now()}` });
+    expect(first.staffRow.eventId).toBe(event.id);
 
-    // Now that staff exists, a non-staff requester is refused...
+    // Now that staff exists, a non-staff requester is refused, including
+    // the organizer themselves — created_by only ever gates the FIRST
+    // claim; organizer.id itself was never added to event_staff.
     await expect(
-      engine.addEventStaff({ eventId: event.id, requesterParticipantId: randomPerson.id, targetEmail: secondMod.email, role: "moderator" }),
+      engine.createStaffLogin({ eventId: event.id, actorParticipantId: randomPerson.id, name: "Second Mod", username: `secondmod-a-${Date.now()}` }),
+    ).rejects.toMatchObject({ code: "forbidden" });
+    await expect(
+      engine.createStaffLogin({ eventId: event.id, actorParticipantId: organizer.id, name: "Second Mod", username: `secondmod-b-${Date.now()}` }),
     ).rejects.toMatchObject({ code: "forbidden" });
 
-    // ...but the organizer (now staff) can add someone else.
-    const second = await engine.addEventStaff({ eventId: event.id, requesterParticipantId: organizer.id, targetEmail: secondMod.email, role: "moderator" });
-    expect(second.participantId).toBe(secondMod.id);
+    // ...but the first staff login (now signed in as itself) can add
+    // someone else.
+    const second = await engine.createStaffLogin({
+      eventId: event.id,
+      actorParticipantId: first.staffRow.participantId,
+      name: "Second Mod",
+      username: `secondmod-c-${Date.now()}`,
+    });
+    expect(second.staffRow.eventId).toBe(event.id);
+    expect(second.staffRow.participantId).not.toBe(first.staffRow.participantId);
   });
 
   it("without created_by, falls back to first-come-first-served (the documented dev-only escape hatch)", async () => {
     const [event] = await dbModule.db.insert(schema.events).values({ name: "Bootstrap Test (open)" }).returning();
-    const [randomPerson] = await dbModule.db.insert(schema.participants).values({ name: "Random", email: `random2-${Date.now()}@test.local` }).returning();
+    const [randomPerson] = await dbModule.db
+      .insert(schema.participants)
+      .values({ name: "Random", username: `random2-${Date.now()}`, passwordHash: testPasswordHash })
+      .returning();
 
-    const first = await engine.addEventStaff({ eventId: event.id, requesterParticipantId: randomPerson.id, targetEmail: randomPerson.email, role: "moderator" });
-    expect(first.participantId).toBe(randomPerson.id);
+    const first = await engine.createStaffLogin({ eventId: event.id, actorParticipantId: randomPerson.id, name: "First Mod", username: `openmod-${Date.now()}` });
+    expect(first.staffRow.eventId).toBe(event.id);
   });
 });

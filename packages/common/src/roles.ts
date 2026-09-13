@@ -2,7 +2,10 @@
 // and the frontend route guards share one vocabulary instead of comparing
 // magic strings independently.
 
-export type EventStaffRole = "moderator" | "admin";
+// Was "moderator" | "admin" — merged into one role (Task 1). Nothing in
+// the authorization code ever branched on the split; see the enum
+// definition in packages/db/schema/enums.ts for the full note.
+export type EventStaffRole = "staff";
 export type TeamMemberRole = "leader" | "member";
 
 // Resolved once per request from (participantId, eventId): who is this

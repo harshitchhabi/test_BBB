@@ -4,6 +4,7 @@ import type { ParticipantEventContext } from "common";
 import { GameError } from "./errors";
 import { recordAudit } from "./audit";
 import { runInTransaction, type Tx } from "./tx";
+import { createLoginTx, generatePassword, hashPassword } from "./auth-service";
 
 // Shared by every service whose command is leader-only (Section 8.3: "The
 // team leader can submit a team bid, trade request, build request, scout
@@ -93,68 +94,94 @@ export async function getParticipantContext(
   };
 }
 
-export async function resolveParticipantByEmail(email: string) {
-  const [participant] = await db.select().from(participants).where(eq(participants.email, email));
-  if (!participant) throw new GameError("not_found", "Participant not found — sign in again.");
-  return participant;
+async function createTeamTx(tx: Tx, params: { eventId: string; ownerParticipantId: string; name: string }) {
+  const [event] = await tx.select().from(events).where(eq(events.id, params.eventId));
+  if (!event) throw new GameError("not_found", "Event not found.");
+  if (event.status !== "setup" && event.status !== "lobby") {
+    throw new GameError("invalid_event_stage", "Teams can only be created before Stage 1 begins.");
+  }
+
+  // Staff accounts stay strictly separate from playing — a staff account
+  // ending up as a team's owner meant they'd start seeing the full
+  // player nav instead of just auction control, which defeats the point
+  // of having a distinct staff role at all. Moot now that only staff can
+  // call createTeamLogin (below) and it always mints a brand-new
+  // participant, but createTeamTx keeps this check since it's also the
+  // one place team creation happens.
+  const [staffRow] = await tx
+    .select({ id: eventStaff.id })
+    .from(eventStaff)
+    .where(and(eq(eventStaff.eventId, params.eventId), eq(eventStaff.participantId, params.ownerParticipantId)));
+  if (staffRow) {
+    throw new GameError("forbidden", "Staff accounts can't create or join a team — sign in with a different account to play.");
+  }
+
+  const [existingMembership] = await tx
+    .select({ teamId: teamMembers.teamId })
+    .from(teamMembers)
+    .where(and(eq(teamMembers.eventId, params.eventId), eq(teamMembers.participantId, params.ownerParticipantId)));
+  if (existingMembership) {
+    throw new GameError("conflict", "You are already on a team in this event.");
+  }
+
+  const [settings] = await tx.select().from(eventSettings).where(eq(eventSettings.eventId, params.eventId));
+  if (!settings) throw new GameError("not_found", "Event settings not found.");
+
+  const team = await insertTeamWithUniqueCode(tx, {
+    eventId: params.eventId,
+    name: params.name,
+    ownerParticipantId: params.ownerParticipantId,
+    auctionTokens: settings.stage1StartingTokens,
+    cityWalletTokens: settings.cityWalletTokens,
+  });
+
+  await tx.insert(teamMembers).values({
+    eventId: params.eventId,
+    teamId: team.id,
+    participantId: params.ownerParticipantId,
+    role: "leader",
+  });
+
+  await recordAudit(tx, {
+    eventId: params.eventId,
+    actorParticipantId: params.ownerParticipantId,
+    action: "team.created",
+    entityType: "team",
+    entityId: team.id,
+    afterJson: team,
+  });
+
+  return team;
 }
 
 export async function createTeam(params: { eventId: string; ownerParticipantId: string; name: string }) {
+  return runInTransaction((tx) => createTeamTx(tx, params));
+}
+
+// Task 1: teams are no longer self-serve. Only staff can create a team,
+// and creating one now also mints its one shared login credential in the
+// same transaction — there's no separate "sign in with Google, then
+// create your team" step anymore, so the plaintext password has to be
+// handed back here, once, for the admin screen to display.
+export async function createTeamLogin(params: {
+  eventId: string;
+  actorParticipantId: string;
+  teamName: string;
+  username: string;
+}) {
   return runInTransaction(async (tx) => {
-    const [event] = await tx.select().from(events).where(eq(events.id, params.eventId));
-    if (!event) throw new GameError("not_found", "Event not found.");
-    if (event.status !== "setup" && event.status !== "lobby") {
-      throw new GameError("invalid_event_stage", "Teams can only be created before Stage 1 begins.");
-    }
-
-    // Staff (moderator/admin) accounts stay strictly separate from
-    // playing — an admin ending up as a team's owner meant they'd start
-    // seeing the full player nav instead of just auction control, which
-    // defeats the point of having a distinct staff role at all.
-    const [staffRow] = await tx
-      .select({ id: eventStaff.id })
-      .from(eventStaff)
-      .where(and(eq(eventStaff.eventId, params.eventId), eq(eventStaff.participantId, params.ownerParticipantId)));
-    if (staffRow) {
-      throw new GameError("forbidden", "Staff accounts can't create or join a team — sign in with a different account to play.");
-    }
-
-    const [existingMembership] = await tx
-      .select({ teamId: teamMembers.teamId })
-      .from(teamMembers)
-      .where(and(eq(teamMembers.eventId, params.eventId), eq(teamMembers.participantId, params.ownerParticipantId)));
-    if (existingMembership) {
-      throw new GameError("conflict", "You are already on a team in this event.");
-    }
-
-    const [settings] = await tx.select().from(eventSettings).where(eq(eventSettings.eventId, params.eventId));
-    if (!settings) throw new GameError("not_found", "Event settings not found.");
-
-    const team = await insertTeamWithUniqueCode(tx, {
-      eventId: params.eventId,
-      name: params.name,
-      ownerParticipantId: params.ownerParticipantId,
-      auctionTokens: settings.stage1StartingTokens,
-      cityWalletTokens: settings.cityWalletTokens,
-    });
-
-    await tx.insert(teamMembers).values({
-      eventId: params.eventId,
-      teamId: team.id,
-      participantId: params.ownerParticipantId,
-      role: "leader",
-    });
-
+    await assertStaffTx(tx, params.eventId, params.actorParticipantId);
+    const { participant, password } = await createLoginTx(tx, { name: params.teamName, username: params.username });
+    const team = await createTeamTx(tx, { eventId: params.eventId, ownerParticipantId: participant.id, name: params.teamName });
     await recordAudit(tx, {
       eventId: params.eventId,
-      actorParticipantId: params.ownerParticipantId,
-      action: "team.created",
+      actorParticipantId: params.actorParticipantId,
+      action: "team_login.created",
       entityType: "team",
       entityId: team.id,
-      afterJson: team,
+      afterJson: { teamName: params.teamName, username: participant.username },
     });
-
-    return team;
+    return { team, username: participant.username, password };
   });
 }
 
@@ -234,11 +261,19 @@ export async function joinTeam(params: { eventId: string; participantId: string;
 // It stays nullable, and bootstrap falls back to "anyone" for an event
 // seeded without specifying a creator — a deliberate, narrower escape
 // hatch for local/dev use, not the recommended path for a real event.
-export async function addEventStaff(params: {
+// Task 1: staff are no longer "an already-signed-in participant, added by
+// email" — there is no more self-serve sign-in to have happened first.
+// Creating a staff login now mints its credential in the same
+// transaction as the event_staff row, same shape as createTeamLogin.
+// The bootstrap rule is unchanged: the event's first staff slot can only
+// be claimed by whoever created the event (events.created_by), or by
+// anyone if the event was seeded without a creator; every slot after
+// that requires the requester to already be staff.
+export async function createStaffLogin(params: {
   eventId: string;
-  requesterParticipantId: string;
-  targetEmail: string;
-  role: "moderator" | "admin";
+  actorParticipantId: string;
+  name: string;
+  username: string;
 }) {
   return runInTransaction(async (tx) => {
     const [event] = await tx.select().from(events).where(eq(events.id, params.eventId));
@@ -249,38 +284,64 @@ export async function addEventStaff(params: {
       const [requesterIsStaff] = await tx
         .select({ id: eventStaff.id })
         .from(eventStaff)
-        .where(and(eq(eventStaff.eventId, params.eventId), eq(eventStaff.participantId, params.requesterParticipantId)));
+        .where(and(eq(eventStaff.eventId, params.eventId), eq(eventStaff.participantId, params.actorParticipantId)));
       if (!requesterIsStaff) throw new GameError("forbidden", "Only existing event staff can add more staff.");
-    } else if (event.createdBy && event.createdBy !== params.requesterParticipantId) {
-      throw new GameError("forbidden", "Only the event's creator can claim the first moderator slot for this event.");
+    } else if (event.createdBy && event.createdBy !== params.actorParticipantId) {
+      throw new GameError("forbidden", "Only the event's creator can claim the first staff slot for this event.");
     }
 
-    const [targetParticipant] = await tx.select().from(participants).where(eq(participants.email, params.targetEmail));
-    if (!targetParticipant) {
-      throw new GameError("not_found", "No participant with that email has signed in yet — they need to sign in once first.");
-    }
-
-    const [existingRow] = await tx
-      .select({ id: eventStaff.id })
-      .from(eventStaff)
-      .where(and(eq(eventStaff.eventId, params.eventId), eq(eventStaff.participantId, targetParticipant.id)));
-    if (existingRow) throw new GameError("conflict", "That participant is already staff for this event.");
+    const { participant, password } = await createLoginTx(tx, { name: params.name, username: params.username });
 
     const [staffRow] = await tx
       .insert(eventStaff)
-      .values({ eventId: params.eventId, participantId: targetParticipant.id, role: params.role })
+      .values({ eventId: params.eventId, participantId: participant.id })
       .returning();
 
     await recordAudit(tx, {
       eventId: params.eventId,
-      actorParticipantId: params.requesterParticipantId,
-      action: "event_staff.added",
+      actorParticipantId: params.actorParticipantId,
+      action: "staff_login.created",
       entityType: "event_staff",
       entityId: staffRow.id,
-      afterJson: { targetEmail: params.targetEmail, role: params.role },
+      afterJson: { name: params.name, username: participant.username },
     });
 
-    return staffRow;
+    return { staffRow, username: participant.username, password };
+  });
+}
+
+// Staff-only: regenerates a login's password (team or staff — either is
+// just a participants row) and clears its session, so whoever was
+// previously signed in with the old password is forced to sign in again
+// with the new one. Mirrors dream_team's ReissueCredentials/SetPassword.
+export async function resetLoginPassword(params: {
+  eventId: string;
+  actorParticipantId: string;
+  participantId: string;
+  reason: string;
+}) {
+  return runInTransaction(async (tx) => {
+    await assertStaffTx(tx, params.eventId, params.actorParticipantId);
+    if (!params.reason.trim()) throw new GameError("conflict", "A reason is required to reset a login's password.");
+
+    const [participant] = await tx.select().from(participants).where(eq(participants.id, params.participantId)).for("update");
+    if (!participant) throw new GameError("not_found", "Login not found.");
+
+    const password = generatePassword();
+    const passwordHash = await hashPassword(password);
+    await tx.update(participants).set({ passwordHash, sessionId: null }).where(eq(participants.id, participant.id));
+
+    await recordAudit(tx, {
+      eventId: params.eventId,
+      actorParticipantId: params.actorParticipantId,
+      reason: params.reason,
+      isOverride: true,
+      action: "login.password_reset",
+      entityType: "participant",
+      entityId: participant.id,
+    });
+
+    return { username: participant.username, password };
   });
 }
 

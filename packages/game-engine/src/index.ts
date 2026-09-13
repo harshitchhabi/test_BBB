@@ -2,6 +2,7 @@ export * from "./errors";
 export * from "./tx";
 export * from "./audit";
 export * from "./broadcast";
+export * from "./auth-service";
 export * from "./team-service";
 export * from "./auction-service";
 export * from "./market-shock-service";
