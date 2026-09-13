@@ -7,11 +7,10 @@ import { PageFrame } from "@/components/theme/PageFrame";
 import { HeaderBanner } from "@/components/theme/HeaderBanner";
 import { Panel, PanelTitle } from "@/components/theme/Panel";
 
-// Section 7.9 "Score & Reveal" / Exports, combined: the final results
-// belong on screen, front and center, not hidden behind a CSV download —
-// this is the moment of the whole event, someone should be able to just
-// look at it. The CSV exports stay, but as a secondary "keep a backup
-// copy" section underneath, not the primary way to see who won.
+// Section 7.9 "Score & Reveal" / Exports: the final results belong on
+// screen, front and center — this is the moment of the whole event,
+// someone should be able to just look at it. No CSV download; the
+// on-screen standings table below is the only export.
 export default function ModeratorExportsPage({ params }: { params: Promise<{ eventId: string }> }) {
   const { eventId } = use(params);
   const { status } = useSession();
@@ -75,16 +74,6 @@ export default function ModeratorExportsPage({ params }: { params: Promise<{ eve
             </table>
           </div>
         )}
-      </Panel>
-
-      <Panel className="w-full max-w-lg">
-        <PanelTitle>BACKUP EXPORTS (CSV)</PanelTitle>
-        <ul className="space-y-2 text-yellow-200 underline text-sm">
-          <li><a href={`/api/events/${eventId}/exports/standings`}>Final standings</a></li>
-          <li><a href={`/api/events/${eventId}/exports/audit-log`}>Audit log</a></li>
-          <li><a href={`/api/events/${eventId}/exports/inventory`}>Team inventory ledger</a></li>
-          <li><a href={`/api/events/${eventId}/exports/bid-history`}>Stage 1 bid history</a></li>
-        </ul>
       </Panel>
     </PageFrame>
   );

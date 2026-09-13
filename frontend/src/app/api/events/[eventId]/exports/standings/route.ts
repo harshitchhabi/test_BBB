@@ -4,13 +4,12 @@ import { isStaff } from "common";
 import { db, eq } from "db";
 import { teams } from "db/schema";
 import { requireParticipant, apiErrorResponse } from "@/lib/api";
-import { toCsv } from "@/lib/csv";
 
 // GET /events/:id/exports/standings — Section 7.9 "Exports: ... final
 // standings" and Section 9 Phase 5 "exported backup score sheet." Staff
-// only — even after reveal, this is the moderator's paper-trail export,
-// not a public leaderboard endpoint.
-export async function GET(req: Request, { params }: { params: Promise<{ eventId: string }> }) {
+// only. On-screen only (no CSV download) — the moderator "Final Results"
+// screen and the Stage 3 Cities post-reveal table both read this JSON.
+export async function GET(_req: Request, { params }: { params: Promise<{ eventId: string }> }) {
   try {
     const { eventId } = await params;
     const participant = await requireParticipant();
@@ -34,13 +33,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ eventId:
       rank: s.rank,
     }));
 
-    if (new URL(req.url).searchParams.get("format") === "json") {
-      return NextResponse.json({ standings: rows });
-    }
-
-    return new NextResponse(toCsv(rows), {
-      headers: { "content-type": "text/csv", "content-disposition": `attachment; filename="standings-${eventId}.csv"` },
-    });
+    return NextResponse.json({ standings: rows });
   } catch (err) {
     return apiErrorResponse(err);
   }
