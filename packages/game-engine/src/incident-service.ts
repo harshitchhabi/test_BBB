@@ -152,6 +152,11 @@ export async function voidBid(params: { eventId: string; bidId: string; actorPar
 
     const [bid] = await tx.select().from(bids).where(eq(bids.id, params.bidId)).for("update");
     if (!bid) throw new GameError("not_found", "Bid not found.");
+    // Bids don't carry their own eventId — join through the lot to make
+    // sure this staff member's authority (verified above, scoped to
+    // params.eventId) actually covers this bid, not some other event's.
+    const [lot] = await tx.select().from(auctionLots).where(eq(auctionLots.id, bid.auctionLotId));
+    if (!lot || lot.eventId !== params.eventId) throw new GameError("not_found", "Bid not found.");
     if (bid.status === "voided") throw new GameError("conflict", "Bid is already voided.");
 
     const [updated] = await tx.update(bids).set({ status: "voided" }).where(eq(bids.id, bid.id)).returning();

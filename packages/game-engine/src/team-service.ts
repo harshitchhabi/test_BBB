@@ -327,6 +327,20 @@ export async function resetLoginPassword(params: {
     const [participant] = await tx.select().from(participants).where(eq(participants.id, params.participantId)).for("update");
     if (!participant) throw new GameError("not_found", "Login not found.");
 
+    // participants is a global table, not scoped to an event — confirm
+    // this login is actually a team owner or staff member of THIS event
+    // before letting this event's staff reset it, so staff for Event A
+    // can't reset a login that only exists in Event B.
+    const [ownedTeam] = await tx
+      .select({ id: teams.id })
+      .from(teams)
+      .where(and(eq(teams.eventId, params.eventId), eq(teams.ownerParticipantId, params.participantId)));
+    const [staffRow] = await tx
+      .select({ id: eventStaff.id })
+      .from(eventStaff)
+      .where(and(eq(eventStaff.eventId, params.eventId), eq(eventStaff.participantId, params.participantId)));
+    if (!ownedTeam && !staffRow) throw new GameError("not_found", "Login not found.");
+
     const password = generatePassword();
     const passwordHash = await hashPassword(password);
     await tx.update(participants).set({ passwordHash, sessionId: null }).where(eq(participants.id, participant.id));

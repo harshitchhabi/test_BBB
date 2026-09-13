@@ -27,6 +27,45 @@ afterAll(async () => {
   await testDb.stop();
 });
 
+describe("voidBid cross-event authorization", () => {
+  it("refuses to void a bid that belongs to a different event, even for valid staff of the caller's own event", async () => {
+    const eventA = await createTestFixture(dbModule.db);
+    const eventB = await createTestFixture(dbModule.db);
+
+    const round = await engine.startRound({ eventId: eventB.event.id, materialTypeId: eventB.material.id, actorParticipantId: eventB.moderator.id });
+    const lot = await engine.openNextLot({ eventId: eventB.event.id, roundId: round.id, actorParticipantId: eventB.moderator.id });
+    const bid = await engine.placeBid({ eventId: eventB.event.id, auctionLotId: lot.id, teamId: eventB.teamA.team.id, actingParticipantId: eventB.teamA.leader.id, amount: 650 });
+
+    // eventA's own moderator is legitimately staff — just not of eventB.
+    // The bid it's trying to void has no eventId column of its own (only
+    // auctionLotId), so this only stays safe if voidBid actually joins
+    // through to the lot and checks its event.
+    await expect(
+      engine.voidBid({ eventId: eventA.event.id, bidId: bid.bid.id, actorParticipantId: eventA.moderator.id, reason: "cross-event probe" }),
+    ).rejects.toMatchObject({ code: "not_found" });
+
+    // The bid is untouched — voiding through the CORRECT event still works.
+    const stillWinning = await engine.voidBid({ eventId: eventB.event.id, bidId: bid.bid.id, actorParticipantId: eventB.moderator.id, reason: "legitimate void" });
+    expect(stillWinning.status).toBe("voided");
+  });
+
+  it("refuses to reset a login that belongs to a different event", async () => {
+    const eventA = await createTestFixture(dbModule.db);
+    const eventB = await createTestFixture(dbModule.db);
+
+    // eventA's own staff is legitimate staff — just not of eventB, whose
+    // team leader (teamA.leader, a global `participants` row) it's
+    // trying to reset the password for.
+    await expect(
+      engine.resetLoginPassword({ eventId: eventA.event.id, actorParticipantId: eventA.moderator.id, participantId: eventB.teamA.leader.id, reason: "cross-event probe" }),
+    ).rejects.toMatchObject({ code: "not_found" });
+
+    // The correct event's own staff can still reset it.
+    const reset = await engine.resetLoginPassword({ eventId: eventB.event.id, actorParticipantId: eventB.moderator.id, participantId: eventB.teamA.leader.id, reason: "legitimate reset" });
+    expect(reset.username).toBe(eventB.teamA.leader.username);
+  });
+});
+
 describe("Manual correction rehearsal scenarios (Section 10 / CONTINGENCIES)", () => {
   it("voids a bidder who can't pay, then reopens the same lot for a fresh sale", async () => {
     const { event, moderator, material, teamA, teamB } = await createTestFixture(dbModule.db);
