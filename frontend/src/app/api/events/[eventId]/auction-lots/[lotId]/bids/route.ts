@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { placeBid } from "game-engine";
-import { requireParticipant, apiErrorResponse } from "@/lib/api";
+import { requireParticipant, apiErrorResponse, isValidAmount } from "@/lib/api";
 
 // POST /events/:id/auction-lots/:id/bids — Section 8.1, actor: team leader.
 // Authorization (must be the leader of the team being bid for) happens
@@ -13,9 +13,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ eventId
     const participant = await requireParticipant();
     const { teamId, amount } = await req.json();
 
-    if (typeof teamId !== "string" || typeof amount !== "number" || !Number.isFinite(amount)) {
+    if (typeof teamId !== "string" || !isValidAmount(amount)) {
       return NextResponse.json(
-        { error: "invalid_input", message: "teamId and a numeric amount are required." },
+        { error: "invalid_input", message: "teamId and a positive whole-number amount are required." },
         { status: 400 },
       );
     }

@@ -22,6 +22,20 @@ export async function requireParticipant() {
 // stable machine-readable reason the UI can act on (Section 7.3: "always
 // show the reason"); anything else is logged and returned as a generic
 // 500 rather than leaking internals.
+// Bid amounts, purchase quantities, etc: the DB column is a Postgres
+// `integer` (32-bit) either way, so an out-of-range value would already
+// fail at insert time rather than overflow into a wraparound value — but
+// that failure is an ugly 500, not a friendly rejected-with-a-reason
+// response, and there's no reason to accept `10.5` and let the recipe
+// math or bid-comparison logic quietly work with a fractional value
+// before the DB ever gets a say. One bound, shared by every route that
+// takes a token amount or a material quantity from the request body.
+const MAX_REASONABLE_AMOUNT = 1_000_000;
+
+export function isValidAmount(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value > 0 && value <= MAX_REASONABLE_AMOUNT;
+}
+
 export function apiErrorResponse(err: unknown) {
   if (err instanceof GameError) {
     return NextResponse.json({ error: err.code, message: err.message }, { status: HTTP_STATUS_BY_CODE[err.code] });
