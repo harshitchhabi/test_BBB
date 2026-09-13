@@ -70,6 +70,25 @@ export async function setEventStatus(params: {
       throw new GameError("conflict", "A reason is required to pause or resume an event.");
     }
 
+    // A live lot mid-bid has nowhere to go once the event leaves
+    // stage_1: placeBid/closeLot both require stage_1, so an orphaned
+    // "live" lot could never close through the normal flow again, and
+    // event.activeRoundId would dangle indefinitely (only forceEventStage
+    // cleans that up). A "pending" (never opened) lot is fine to leave
+    // behind — a moderator may deliberately choose to stop auctioning a
+    // material early — but a lot actually accepting bids right now must
+    // be closed first. This only guards the normal path; forceEventStage
+    // exists precisely for the "just get me out of here" override case.
+    if (event.activeRoundId) {
+      const [liveLot] = await tx
+        .select({ id: auctionLots.id })
+        .from(auctionLots)
+        .where(and(eq(auctionLots.roundId, event.activeRoundId), eq(auctionLots.status, "live")));
+      if (liveLot) {
+        throw new GameError("conflict", "Close the currently live auction lot before advancing the event's stage.");
+      }
+    }
+
     const updates: Partial<typeof events.$inferInsert> = { status: params.status as (typeof events.$inferSelect)["status"] };
     if (params.status === "stage_1" && !event.startedAt) {
       updates.startedAt = new Date();

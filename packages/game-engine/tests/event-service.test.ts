@@ -86,6 +86,37 @@ describe("Event stage control (setEventStatus)", () => {
     const resumed = await engine.setEventStatus({ eventId: event.id, status: "lobby", actorParticipantId: moderator.id, reason: "All clear." });
     expect(resumed.status).toBe("lobby");
   });
+
+  it("blocks advancing out of stage_1 while a lot is still live, and allows it once closed", async () => {
+    const [event] = await dbModule.db.insert(schema.events).values({ name: "Live Lot Guard Test", status: "stage_1" }).returning();
+    await dbModule.db.insert(schema.eventSettings).values({ eventId: event.id });
+    const [moderator] = await dbModule.db.insert(schema.participants).values({ name: "Mod", email: `mod3-${event.id}@test.local`, username: `mod3-${event.id}`, passwordHash: "$2a$10$CwTycUXWue0Thq9StjUM0uJ8oxL/Yjyq6XvXqAtVvjGdiWZOWXQNi" }).returning();
+    await dbModule.db.insert(schema.eventStaff).values({ eventId: event.id, participantId: moderator.id, role: "staff" });
+    const [material] = await dbModule.db
+      .insert(schema.materialTypes)
+      .values({ eventId: event.id, key: "bricks", name: "Bricks", unitLabel: "units", stickerPrice: 1, isRare: false, isBonusOnly: false, sortOrder: 1, defaultLotQuantity: 100, defaultOpeningBid: 100 })
+      .returning();
+    const [leader] = await dbModule.db.insert(schema.participants).values({ name: "Leader", email: `leader3-${event.id}@test.local`, username: `leader3-${event.id}`, passwordHash: "$2a$10$CwTycUXWue0Thq9StjUM0uJ8oxL/Yjyq6XvXqAtVvjGdiWZOWXQNi" }).returning();
+    const [team] = await dbModule.db.insert(schema.teams).values({ eventId: event.id, name: "A", code: "BBBBBB", ownerParticipantId: leader.id }).returning();
+    await dbModule.db.insert(schema.teamMembers).values({ eventId: event.id, teamId: team.id, participantId: leader.id, role: "leader" });
+
+    const round = await engine.startRound({ eventId: event.id, materialTypeId: material.id, actorParticipantId: moderator.id });
+    const lot = await engine.openNextLot({ eventId: event.id, roundId: round.id, actorParticipantId: moderator.id });
+    expect(lot.status).toBe("live");
+
+    // The exact bug this test guards against: without the fix, this
+    // transition would silently succeed and orphan the live lot forever
+    // (placeBid/closeLot both require stage_1, so it could never close
+    // through the normal flow again).
+    await expect(
+      engine.setEventStatus({ eventId: event.id, status: "stage_2", actorParticipantId: moderator.id }),
+    ).rejects.toMatchObject({ code: "conflict" });
+
+    await engine.closeLot({ eventId: event.id, auctionLotId: lot.id, actorParticipantId: moderator.id });
+
+    const advanced = await engine.setEventStatus({ eventId: event.id, status: "stage_2", actorParticipantId: moderator.id });
+    expect(advanced.status).toBe("stage_2");
+  });
 });
 
 describe("forceEventStage (Task 3: admin stage override)", () => {
