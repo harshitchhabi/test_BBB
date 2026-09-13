@@ -45,6 +45,12 @@ export default function ModeratorSetupPage({ params }: { params: Promise<{ event
   const [resetBusy, setResetBusy] = useState(false);
   const [resetMessage, setResetMessage] = useState<string | null>(null);
 
+  const [forceTarget, setForceTarget] = useState("");
+  const [forceReason, setForceReason] = useState("");
+  const [forceConfirmed, setForceConfirmed] = useState(false);
+  const [forceBusy, setForceBusy] = useState(false);
+  const [forceMessage, setForceMessage] = useState<string | null>(null);
+
   const refresh = useCallback(async () => {
     const res = await fetch(`/api/events/${eventId}/overview`);
     if (res.ok) setOverview(await res.json());
@@ -79,6 +85,7 @@ export default function ModeratorSetupPage({ params }: { params: Promise<{ event
   }
 
   async function advanceTo(nextStatus: string) {
+    if (stageBusy) return;
     setStageBusy(true);
     setStageMessage(null);
     try {
@@ -100,6 +107,7 @@ export default function ModeratorSetupPage({ params }: { params: Promise<{ event
   }
 
   async function resetForNewRound() {
+    if (resetBusy) return;
     setResetBusy(true);
     setResetMessage(null);
     try {
@@ -117,6 +125,32 @@ export default function ModeratorSetupPage({ params }: { params: Promise<{ event
       }
     } finally {
       setResetBusy(false);
+    }
+  }
+
+  // Task 3: jump straight to any real stage, bypassing the normal
+  // forward-only sequence. Always requires a reason; the server voids
+  // whatever round/auction is currently live rather than abandoning it.
+  async function forceStage() {
+    if (forceBusy || !forceTarget || !forceReason || !forceConfirmed) return;
+    setForceBusy(true);
+    setForceMessage(null);
+    try {
+      const res = await fetch(`/api/events/${eventId}/status`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ status: forceTarget, reason: forceReason, force: true }),
+      });
+      const body = await res.json();
+      if (!res.ok) setForceMessage(body.message);
+      else {
+        setForceTarget("");
+        setForceReason("");
+        setForceConfirmed(false);
+        refresh();
+      }
+    } finally {
+      setForceBusy(false);
     }
   }
 
@@ -171,6 +205,38 @@ export default function ModeratorSetupPage({ params }: { params: Promise<{ event
         ) : (
           <p className="text-white/70">Loading…</p>
         )}
+      </Panel>
+
+      <Panel className="w-full max-w-lg mb-4 border-2 border-red-800">
+        <PanelTitle>FORCE JUMP TO ANY STAGE</PanelTitle>
+        <p className="text-white/70 text-sm mb-3">
+          Skips the normal forward-only sequence — jump to any stage, forward or backward. Whatever auction round or
+          city auction is currently live gets voided (its tokens/materials returned) rather than left dangling.
+        </p>
+        <div className="flex gap-2 flex-wrap mb-2">
+          <select value={forceTarget} onChange={(e) => setForceTarget(e.target.value)} className="px-2 py-2 rounded text-black">
+            <option value="">Choose a stage…</option>
+            {Object.entries(STAGE_LABELS)
+              .filter(([key]) => key !== currentStatus)
+              .map(([key, label]) => (
+                <option key={key} value={key}>{label}</option>
+              ))}
+          </select>
+        </div>
+        <input
+          value={forceReason}
+          onChange={(e) => setForceReason(e.target.value)}
+          placeholder="Reason (required)"
+          className="w-full px-3 py-2 rounded text-black mb-2"
+        />
+        <label className="flex items-center gap-2 text-white/90 text-sm mb-3">
+          <input type="checkbox" checked={forceConfirmed} onChange={(e) => setForceConfirmed(e.target.checked)} className="w-5 h-5 accent-red-500 shrink-0" />
+          I understand this bypasses the normal sequence and voids anything currently live.
+        </label>
+        <WoodButton variant="danger" disabled={forceBusy || !forceTarget || !forceReason || !forceConfirmed} onClick={forceStage}>
+          Force stage change
+        </WoodButton>
+        {forceMessage && <p className="text-red-300 mt-3">{forceMessage}</p>}
       </Panel>
 
       <Panel className="w-full max-w-lg mb-4 border-2 border-red-800">

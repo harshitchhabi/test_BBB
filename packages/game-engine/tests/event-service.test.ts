@@ -87,3 +87,78 @@ describe("Event stage control (setEventStatus)", () => {
     expect(resumed.status).toBe("lobby");
   });
 });
+
+describe("forceEventStage (Task 3: admin stage override)", () => {
+  it("jumps straight to any stage, voiding a live lot along the way, and requires a reason", async () => {
+    const [event] = await dbModule.db.insert(schema.events).values({ name: "Force Stage Test", status: "stage_1" }).returning();
+    await dbModule.db.insert(schema.eventSettings).values({ eventId: event.id });
+    const [moderator] = await dbModule.db
+      .insert(schema.participants)
+      .values({ name: "Mod", username: `forcemod-${event.id}`, passwordHash: "$2a$10$CwTycUXWue0Thq9StjUM0uJ8oxL/Yjyq6XvXqAtVvjGdiWZOWXQNi" })
+      .returning();
+    await dbModule.db.insert(schema.eventStaff).values({ eventId: event.id, participantId: moderator.id });
+    const [randomPerson] = await dbModule.db
+      .insert(schema.participants)
+      .values({ name: "Random", username: `forcerandom-${event.id}`, passwordHash: "$2a$10$CwTycUXWue0Thq9StjUM0uJ8oxL/Yjyq6XvXqAtVvjGdiWZOWXQNi" })
+      .returning();
+
+    const [material] = await dbModule.db
+      .insert(schema.materialTypes)
+      .values({ eventId: event.id, key: "bricks", name: "Bricks", unitLabel: "units", stickerPrice: 1, isRare: false, isBonusOnly: false, sortOrder: 1, defaultLotQuantity: 100, defaultOpeningBid: 100 })
+      .returning();
+    const [leader] = await dbModule.db
+      .insert(schema.participants)
+      .values({ name: "Leader", username: `forceleader-${event.id}`, passwordHash: "$2a$10$CwTycUXWue0Thq9StjUM0uJ8oxL/Yjyq6XvXqAtVvjGdiWZOWXQNi" })
+      .returning();
+    const [team] = await dbModule.db.insert(schema.teams).values({ eventId: event.id, name: "A", code: "BBBBBB", ownerParticipantId: leader.id }).returning();
+    await dbModule.db.insert(schema.teamMembers).values({ eventId: event.id, teamId: team.id, participantId: leader.id, role: "leader" });
+
+    const round = await engine.startRound({ eventId: event.id, materialTypeId: material.id, actorParticipantId: moderator.id });
+    const lot = await engine.openNextLot({ eventId: event.id, roundId: round.id, actorParticipantId: moderator.id });
+    const { bid } = await engine.placeBid({ eventId: event.id, auctionLotId: lot.id, teamId: team.id, actingParticipantId: leader.id, amount: 150 });
+    expect(bid.status).toBe("winning");
+
+    // Non-staff is refused, and a reason is always required.
+    await expect(
+      engine.forceEventStage({ eventId: event.id, status: "stage_3", actorParticipantId: randomPerson.id, reason: "x" }),
+    ).rejects.toMatchObject({ code: "forbidden" });
+    await expect(
+      engine.forceEventStage({ eventId: event.id, status: "stage_3", actorParticipantId: moderator.id, reason: "" }),
+    ).rejects.toMatchObject({ code: "conflict" });
+    await expect(
+      engine.forceEventStage({ eventId: event.id, status: "not_a_real_stage", actorParticipantId: moderator.id, reason: "test" }),
+    ).rejects.toMatchObject({ code: "invalid_input" });
+
+    // Jump straight from stage_1 to stage_3 — normally impossible via
+    // setEventStatus (stage_1's only valid next steps are stage_2/paused).
+    const forced = await engine.forceEventStage({
+      eventId: event.id,
+      status: "stage_3",
+      actorParticipantId: moderator.id,
+      reason: "Skipping Stage 2 for a fast-moving group.",
+    });
+    expect(forced.status).toBe("stage_3");
+    expect(forced.activeRoundId).toBeNull();
+
+    // The live lot that was abandoned mid-bid got voided, not left
+    // dangling — and its material went back to the bank, not to
+    // whichever team happened to be winning at the moment of the jump.
+    const [lotAfter] = await dbModule.db.select().from(schema.auctionLots).where(dbModule.eq(schema.auctionLots.id, lot.id));
+    expect(lotAfter.status).toBe("voided");
+    const [materialLotAfter] = await dbModule.db.select().from(schema.materialLots).where(dbModule.eq(schema.materialLots.id, lotAfter.materialLotId));
+    expect(materialLotAfter.status).toBe("bank_stock");
+
+    const [roundAfter] = await dbModule.db.select().from(schema.auctionRounds).where(dbModule.eq(schema.auctionRounds.id, round.id));
+    expect(roundAfter.status).toBe("cancelled");
+
+    // Nobody paid anything — placeBid never deducts tokens, only
+    // closeLot does, and this lot never closed.
+    const [teamAfter] = await dbModule.db.select().from(schema.teams).where(dbModule.eq(schema.teams.id, team.id));
+    expect(teamAfter.auctionTokens).toBe(1000);
+
+    // Can't force it to the stage it's already at.
+    await expect(
+      engine.forceEventStage({ eventId: event.id, status: "stage_3", actorParticipantId: moderator.id, reason: "again" }),
+    ).rejects.toMatchObject({ code: "conflict" });
+  });
+});

@@ -1,10 +1,11 @@
-import { eq } from "db";
+import { eq, and } from "db";
 import {
   events,
   teams,
   teamMembers,
   materialLots,
   auctionRounds,
+  auctionLots,
   teamInventoryTransactions,
   trades,
   bankPurchases,
@@ -92,6 +93,105 @@ export async function setEventStatus(params: {
     });
 
     queueBroadcast({ eventId: params.eventId, type: "event.stage_changed", data: { status: updated.status } });
+
+    return updated;
+  });
+}
+
+// Task 3: setEventStatus only allows the mostly-forward moves in
+// VALID_TRANSITIONS above — there's no way to jump an event straight to
+// an arbitrary stage (e.g. skip straight to stage_3 because Stage 1/2
+// were run on paper for a fast-moving group, or jump backward to redo a
+// stage after a real mistake) without going through resetEventForNewRound
+// (which wipes everything). This is that override: any real stage,
+// always requires a reason, always recorded as an isOverride audit entry
+// since bypassing the normal sequence is inherently a deliberate
+// exception, not routine flow.
+//
+// "Sane cleanup of any live round/auction when jumping away from it"
+// means: whatever is currently live gets voided, never silently
+// abandoned. A live auction lot or city auction has a countdown running
+// against it — force-jumping the event's stage out from under it would
+// otherwise leave that lot "live" forever with nothing left driving it
+// (the timer sweep only closes lots whose *own* stage is still current),
+// and its opening/highest bid still holding a team's tokens hostage.
+// Voiding it returns those tokens/materials to the state before that lot
+// existed, same as reopenLot but without settling anything first, and
+// clears the event's activeRoundId/activeCityAuctionId pointers.
+const REAL_EVENT_STAGES = ["setup", "lobby", "stage_1", "stage_2", "stage_3", "scoring", "completed", "paused"];
+
+export async function forceEventStage(params: {
+  eventId: string;
+  status: string;
+  actorParticipantId: string;
+  reason: string;
+}) {
+  return runInTransaction(async (tx, queueBroadcast) => {
+    await assertStaffTx(tx, params.eventId, params.actorParticipantId);
+    if (!params.reason?.trim()) throw new GameError("conflict", "A reason is required to force an event's stage.");
+    if (!REAL_EVENT_STAGES.includes(params.status)) {
+      throw new GameError("invalid_input", `"${params.status}" is not a real event stage.`);
+    }
+
+    const [event] = await tx.select().from(events).where(eq(events.id, params.eventId)).for("update");
+    if (!event) throw new GameError("not_found", "Event not found.");
+    if (event.status === params.status) throw new GameError("conflict", "The event is already at that stage.");
+
+    let voidedLotId: string | null = null;
+    let voidedCityAuctionId: string | null = null;
+
+    if (event.activeRoundId) {
+      const [liveLot] = await tx
+        .select()
+        .from(auctionLots)
+        .where(and(eq(auctionLots.roundId, event.activeRoundId), eq(auctionLots.status, "live")))
+        .for("update");
+      if (liveLot) {
+        await tx.update(auctionLots).set({ status: "voided" }).where(eq(auctionLots.id, liveLot.id));
+        await tx.update(materialLots).set({ status: "bank_stock" }).where(eq(materialLots.id, liveLot.materialLotId));
+        voidedLotId = liveLot.id;
+      }
+      await tx
+        .update(auctionRounds)
+        .set({ status: "cancelled" })
+        .where(and(eq(auctionRounds.id, event.activeRoundId), eq(auctionRounds.status, "active")));
+    }
+
+    if (event.activeCityAuctionId) {
+      const [liveCityAuction] = await tx
+        .select()
+        .from(cityAuctions)
+        .where(eq(cityAuctions.id, event.activeCityAuctionId))
+        .for("update");
+      if (liveCityAuction && liveCityAuction.status === "live") {
+        await tx.update(cityAuctions).set({ status: "voided" }).where(eq(cityAuctions.id, liveCityAuction.id));
+        voidedCityAuctionId = liveCityAuction.id;
+      }
+    }
+
+    const updates: Partial<typeof events.$inferInsert> = {
+      status: params.status as (typeof events.$inferSelect)["status"],
+      activeRoundId: null,
+      activeCityAuctionId: null,
+    };
+    if (params.status === "stage_1" && !event.startedAt) updates.startedAt = new Date();
+    if (params.status === "completed" && !event.completedAt) updates.completedAt = new Date();
+
+    const [updated] = await tx.update(events).set(updates).where(eq(events.id, event.id)).returning();
+
+    await recordAudit(tx, {
+      eventId: params.eventId,
+      actorParticipantId: params.actorParticipantId,
+      reason: params.reason,
+      isOverride: true,
+      action: "event.stage_forced",
+      entityType: "event",
+      entityId: event.id,
+      beforeJson: { status: event.status, activeRoundId: event.activeRoundId, activeCityAuctionId: event.activeCityAuctionId },
+      afterJson: { status: updated.status, voidedLotId, voidedCityAuctionId },
+    });
+
+    queueBroadcast({ eventId: params.eventId, type: "event.stage_changed", data: { status: updated.status, forced: true } });
 
     return updated;
   });
