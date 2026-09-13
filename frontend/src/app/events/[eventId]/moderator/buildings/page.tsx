@@ -43,6 +43,7 @@ export default function ModeratorBuildingsPage({ params }: { params: Promise<{ e
   }, [connected, refresh]);
 
   async function call(path: string, body?: unknown) {
+    if (busy) return;
     setBusy(true);
     setMessage(null);
     try {

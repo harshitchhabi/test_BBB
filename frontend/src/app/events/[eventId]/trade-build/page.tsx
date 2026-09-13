@@ -25,6 +25,7 @@ export default function TradeBuildPage({ params }: { params: Promise<{ eventId: 
   const [bankStock, setBankStock] = useState<any[]>([]);
   const [message, setMessage] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
   const [counterpartyTeamId, setCounterpartyTeamId] = useState("");
   const [tradeLines, setTradeLines] = useState<Array<{ fromMe: boolean; materialTypeId: string; quantity: string }>>([
@@ -73,43 +74,59 @@ export default function TradeBuildPage({ params }: { params: Promise<{ eventId: 
   const quantityByMaterial = new Map(inventory.map((i) => [i.materialTypeId, i.quantity]));
 
   async function submitTrade() {
-    if (!overview?.myTeam) return;
+    if (!overview?.myTeam || busy) return;
+    setBusy(true);
     setMessage(null);
-    const lines = tradeLines
-      .filter((l) => l.materialTypeId && l.quantity)
-      .map((l) => ({ fromTeamId: l.fromMe ? overview.myTeam.id : counterpartyTeamId, materialTypeId: l.materialTypeId, quantity: Number(l.quantity) }));
-    const res = await fetch(`/api/events/${eventId}/trades`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ proposerTeamId: overview.myTeam.id, counterpartyTeamId, lines }),
-    });
-    const body = await res.json();
-    if (!res.ok) setMessage(body.message);
-    else {
-      setTradeLines([{ fromMe: true, materialTypeId: "", quantity: "" }]);
-      refresh();
+    try {
+      const lines = tradeLines
+        .filter((l) => l.materialTypeId && l.quantity)
+        .map((l) => ({ fromTeamId: l.fromMe ? overview.myTeam.id : counterpartyTeamId, materialTypeId: l.materialTypeId, quantity: Number(l.quantity) }));
+      const res = await fetch(`/api/events/${eventId}/trades`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ proposerTeamId: overview.myTeam.id, counterpartyTeamId, lines }),
+      });
+      const body = await res.json();
+      if (!res.ok) setMessage(body.message);
+      else {
+        setTradeLines([{ fromMe: true, materialTypeId: "", quantity: "" }]);
+        refresh();
+      }
+    } finally {
+      setBusy(false);
     }
   }
 
   async function respondToTrade(tradeId: string, action: "accept" | "decline") {
+    if (busy) return;
+    setBusy(true);
     setMessage(null);
-    const res = await fetch(`/api/events/${eventId}/trades/${tradeId}/${action}`, { method: "POST" });
-    const body = await res.json();
-    if (!res.ok) setMessage(body.message);
-    else refresh();
+    try {
+      const res = await fetch(`/api/events/${eventId}/trades/${tradeId}/${action}`, { method: "POST" });
+      const body = await res.json();
+      if (!res.ok) setMessage(body.message);
+      else refresh();
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function construct(recipeId: string, bonuses: Record<string, boolean>) {
-    if (!overview?.myTeam) return;
+    if (!overview?.myTeam || busy) return;
+    setBusy(true);
     setMessage(null);
-    const res = await fetch(`/api/events/${eventId}/buildings`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ teamId: overview.myTeam.id, recipeId, bonuses }),
-    });
-    const body = await res.json();
-    if (!res.ok) setMessage(body.message);
-    else refresh();
+    try {
+      const res = await fetch(`/api/events/${eventId}/buildings`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ teamId: overview.myTeam.id, recipeId, bonuses }),
+      });
+      const body = await res.json();
+      if (!res.ok) setMessage(body.message);
+      else refresh();
+    } finally {
+      setBusy(false);
+    }
   }
 
   if (loadError && !overview) return <PageFrame><p className="text-red-300 text-center mt-8">{loadError}</p></PageFrame>;
@@ -177,7 +194,7 @@ export default function TradeBuildPage({ params }: { params: Promise<{ eventId: 
               ))}
               <div className="flex gap-2 mt-3">
                 <WoodButton onClick={() => setTradeLines((ls) => [...ls, { fromMe: true, materialTypeId: "", quantity: "" }])}>+ line</WoodButton>
-                <WoodButton variant="primary" onClick={submitTrade} disabled={!counterpartyTeamId}>Propose trade</WoodButton>
+                <WoodButton variant="primary" onClick={submitTrade} disabled={busy || !counterpartyTeamId}>Propose trade</WoodButton>
               </div>
             </div>
           ) : (
@@ -202,13 +219,13 @@ export default function TradeBuildPage({ params }: { params: Promise<{ eventId: 
                       </div>
                       {isCounterparty ? (
                         <div className="flex gap-2 mt-2">
-                          <WoodButton variant="primary" onClick={() => respondToTrade(t.id, "accept")}>Accept</WoodButton>
-                          <WoodButton variant="danger" onClick={() => respondToTrade(t.id, "decline")}>Decline</WoodButton>
+                          <WoodButton variant="primary" disabled={busy} onClick={() => respondToTrade(t.id, "accept")}>Accept</WoodButton>
+                          <WoodButton variant="danger" disabled={busy} onClick={() => respondToTrade(t.id, "decline")}>Decline</WoodButton>
                         </div>
                       ) : (
                         <div className="flex items-center gap-2 mt-2">
                           <span className="text-yellow-300">Waiting for {t.counterpartyTeamName} to respond.</span>
-                          <WoodButton onClick={() => respondToTrade(t.id, "decline")}>Withdraw offer</WoodButton>
+                          <WoodButton disabled={busy} onClick={() => respondToTrade(t.id, "decline")}>Withdraw offer</WoodButton>
                         </div>
                       )}
                     </div>
@@ -250,9 +267,9 @@ export default function TradeBuildPage({ params }: { params: Promise<{ eventId: 
                   </ul>
                   {canBuild && (overview.myRole === "leader" || overview.isStaff) && (
                     <div className="flex gap-2 mt-2 flex-wrap">
-                      <WoodButton variant="primary" onClick={() => construct(r.id, {})}>Construct</WoodButton>
-                      <WoodButton onClick={() => construct(r.id, { eco: true })}>+ Eco</WoodButton>
-                      <WoodButton onClick={() => construct(r.id, { landmark: true })}>+ Landmark</WoodButton>
+                      <WoodButton variant="primary" disabled={busy} onClick={() => construct(r.id, {})}>Construct</WoodButton>
+                      <WoodButton disabled={busy} onClick={() => construct(r.id, { eco: true })}>+ Eco</WoodButton>
+                      <WoodButton disabled={busy} onClick={() => construct(r.id, { landmark: true })}>+ Landmark</WoodButton>
                     </div>
                   )}
                 </div>

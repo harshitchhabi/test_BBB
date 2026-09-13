@@ -23,6 +23,7 @@ export default function CityAuctionPage({ params }: { params: Promise<{ eventId:
   const [message, setMessage] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  const [busy, setBusy] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -65,32 +66,42 @@ export default function CityAuctionPage({ params }: { params: Promise<{ eventId:
   }, [liveAuctionId]);
 
   async function bid(auctionId: string) {
-    if (!overview?.myTeam) return;
+    if (!overview?.myTeam || busy) return;
+    setBusy(true);
     setMessage(null);
-    const res = await fetch(`/api/events/${eventId}/city-auctions/${auctionId}/bids`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ teamId: overview.myTeam.id, amount: Number(bidAmount) }),
-    });
-    const body = await res.json();
-    if (!res.ok) setMessage(body.message);
-    else {
-      setBidAmount("");
-      refresh();
+    try {
+      const res = await fetch(`/api/events/${eventId}/city-auctions/${auctionId}/bids`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ teamId: overview.myTeam.id, amount: Number(bidAmount) }),
+      });
+      const body = await res.json();
+      if (!res.ok) setMessage(body.message);
+      else {
+        setBidAmount("");
+        refresh();
+      }
+    } finally {
+      setBusy(false);
     }
   }
 
   async function scout(cityId: string) {
-    if (!overview?.myTeam) return;
+    if (!overview?.myTeam || busy) return;
+    setBusy(true);
     setMessage(null);
-    const res = await fetch(`/api/events/${eventId}/scout-reports`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ teamId: overview.myTeam.id, cityId }),
-    });
-    const body = await res.json();
-    if (!res.ok) setMessage(body.message);
-    else refresh();
+    try {
+      const res = await fetch(`/api/events/${eventId}/scout-reports`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ teamId: overview.myTeam.id, cityId }),
+      });
+      const body = await res.json();
+      if (!res.ok) setMessage(body.message);
+      else refresh();
+    } finally {
+      setBusy(false);
+    }
   }
 
   if (loadError && !overview) return <PageFrame><p className="text-red-300 text-center mt-8">{loadError}</p></PageFrame>;
@@ -134,7 +145,7 @@ export default function CityAuctionPage({ params }: { params: Promise<{ eventId:
           {overview.myRole === "leader" && !myCity && !timerExpired ? (
             <div className="flex gap-2">
               <input type="number" value={bidAmount} onChange={(e) => setBidAmount(e.target.value)} className="px-3 py-2 rounded text-black flex-1" />
-              <WoodButton variant="primary" onClick={() => bid(liveAuction.id)} disabled={!bidAmount}>Bid</WoodButton>
+              <WoodButton variant="primary" onClick={() => bid(liveAuction.id)} disabled={busy || !bidAmount}>Bid</WoodButton>
             </div>
           ) : timerExpired && overview.myRole === "leader" && !myCity ? (
             <p className="text-[#F1EBB5]">This auction's timer has run out — waiting for the moderator to close it.</p>
@@ -160,7 +171,7 @@ export default function CityAuctionPage({ params }: { params: Promise<{ eventId:
                   {scoutReportByCity.get(c.id).clueType === "minimum_multiplier" ? "≥" : "<"} {scoutReportByCity.get(c.id).clueValue}x
                 </p>
               ) : overview.myRole === "leader" && overview.settings.scoutReportsEnabled && !c.assignedTeamId ? (
-                <WoodButton className="mt-2 text-xs px-2 py-1" onClick={() => scout(c.id)}>
+                <WoodButton className="mt-2 text-xs px-2 py-1" disabled={busy} onClick={() => scout(c.id)}>
                   Scout ({overview.settings.scoutReportCost})
                 </WoodButton>
               ) : null}

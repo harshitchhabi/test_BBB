@@ -38,6 +38,7 @@ export default function ModeratorTradesPage({ params }: { params: Promise<{ even
   }, [connected, refresh]);
 
   async function call(path: string, body?: unknown) {
+    if (busy) return;
     setBusy(true);
     setMessage(null);
     try {
