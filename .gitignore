@@ -13,6 +13,13 @@ yarn-error.log*
 .env*.local
 !.env.example
 
+# deploy/docker/*.env.example are templates (tracked); the real files a
+# deployer copies them to (frontend.env, backend.env, .env) hold actual
+# secrets and must never be committed - "frontend.env"/"backend.env"
+# don't match the .env pattern above (only the exact ".env" filename
+# does), so they need their own rule.
+deploy/docker/*.env
+
 # next.js
 .next/
 out/

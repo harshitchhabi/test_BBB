@@ -1,0 +1,59 @@
+# Alternative to the native EC2 setup in deploy/README.md - same overall
+# architecture (nginx on the host terminates TLS and reverse-proxies to
+# these two services; Postgres persists via a named volume), just Docker
+# Compose instead of systemd + a bare `npm ci` on the host. Run from the
+# REPO ROOT:
+#   docker compose -f deploy/docker/docker-compose.yml --env-file deploy/docker/.env up -d --build
+#
+# See deploy/docker/README.md for the full walkthrough (env file setup,
+# migrations, creating the first event, nginx pointing at these ports).
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: bbb_app
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: bricks_by_bid_prod
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # Not published to the host at all - only reachable by other
+    # containers on this compose network, by name ("postgres").
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bbb_app"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ../..
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - backend.env
+    ports:
+      - "127.0.0.1:8080:8080"
+
+  frontend:
+    build:
+      context: ../..
+      dockerfile: frontend/Dockerfile
+      args:
+        NEXT_PUBLIC_WS_URL: ${NEXT_PUBLIC_WS_URL}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      backend:
+        condition: service_started
+    env_file:
+      - frontend.env
+    ports:
+      - "127.0.0.1:3000:3000"
+
+volumes:
+  pgdata:

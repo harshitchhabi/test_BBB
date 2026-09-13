@@ -6,6 +6,15 @@ const nextConfig: NextConfig = {
   // fields) — same convention the legacy frontend used for `common`/`db`.
   transpilePackages: ["common", "db", "game-engine"],
 
+  // Produces .next/standalone: a minimal, self-contained server bundle
+  // (its own copy of only the node_modules actually used, traced from
+  // this monorepo's root) — what frontend/Dockerfile copies into the
+  // runtime image instead of shipping the whole node_modules tree.
+  // Doesn't change the existing `next start` deployment (deploy/) at
+  // all - the regular .next build output is produced right alongside
+  // this either way; standalone is purely an additional output.
+  output: "standalone",
+
   // Production-hardening headers flagged by the pre-deployment security
   // review — none of these were set before. frame-ancestors 'none' (plus
   // the older X-Frame-Options for browsers that don't read CSP) stops
