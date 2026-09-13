@@ -17,12 +17,25 @@
 // gets closed a few seconds late once the sweep resumes.
 import "dotenv/config";
 import { createServer, type IncomingMessage } from "node:http";
+import { timingSafeEqual } from "node:crypto";
 import { WebSocketServer, WebSocket } from "ws";
 import type { WsBroadcastEnvelope } from "common";
+import { verifyWsTicket } from "common";
 import { closeExpiredLots, closeExpiredCityAuctions } from "game-engine";
 
 const PORT = Number(process.env.PORT ?? 8080);
 const INTERNAL_BROADCAST_SECRET = process.env.INTERNAL_BROADCAST_SECRET;
+
+// Constant-time secret comparison — this secret is shared only between
+// our own two processes (not attacker-reachable in the intended
+// deployment), but it's free to harden to the same standard as the
+// session cookie's HMAC check.
+function secretsMatch(provided: string | string[] | undefined, expected: string): boolean {
+  if (typeof provided !== "string") return false;
+  const a = Buffer.from(provided);
+  const b = Buffer.from(expected);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
 const TIMER_SWEEP_INTERVAL_MS = Number(process.env.TIMER_SWEEP_INTERVAL_MS ?? 2000);
 const ENABLE_TIMER_SWEEP = process.env.ENABLE_TIMER_SWEEP !== "false";
 
@@ -80,7 +93,7 @@ const server = createServer(async (req, res) => {
   }
 
   if (req.method === "POST" && req.url === "/internal/broadcast") {
-    if (!INTERNAL_BROADCAST_SECRET || req.headers["x-internal-secret"] !== INTERNAL_BROADCAST_SECRET) {
+    if (!INTERNAL_BROADCAST_SECRET || !secretsMatch(req.headers["x-internal-secret"], INTERNAL_BROADCAST_SECRET)) {
       res.writeHead(401).end("unauthorized");
       return;
     }
@@ -111,6 +124,14 @@ wss.on("connection", (ws) => {
     try {
       const message = JSON.parse(raw.toString());
       if (message.type === "join" && typeof message.eventId === "string") {
+        if (
+          !INTERNAL_BROADCAST_SECRET ||
+          typeof message.ticket !== "string" ||
+          !verifyWsTicket(INTERNAL_BROADCAST_SECRET, message.ticket, message.eventId)
+        ) {
+          ws.send(JSON.stringify({ type: "join_rejected", eventId: message.eventId }));
+          return;
+        }
         joinRoom(message.eventId, ws);
         ws.send(JSON.stringify({ type: "joined", eventId: message.eventId }));
       } else if (message.type === "ping") {

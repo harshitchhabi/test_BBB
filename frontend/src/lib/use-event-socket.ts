@@ -62,14 +62,34 @@ function setConnected(entry: SocketEntry, value: boolean) {
   for (const listen of entry.statusListeners) listen(value);
 }
 
-function connectSocket(eventId: string, entry: SocketEntry) {
+async function connectSocket(eventId: string, entry: SocketEntry) {
+  // Security hardening: the relay is a different origin/port than the
+  // frontend, so the httpOnly session cookie never reaches it — without
+  // a ticket, anyone who knew this event's UUID could join its room and
+  // silently receive every broadcast with zero authentication. Fetch a
+  // short-lived signed ticket (mint side does the real "is this
+  // participant actually part of this event" check) before opening the
+  // socket at all; if that fails (signed out, not part of the event),
+  // don't open a socket this call can't authenticate.
+  let ticket: string;
+  try {
+    const res = await fetch(`/api/events/${eventId}/ws-ticket`);
+    if (!res.ok) return;
+    ({ ticket } = await res.json());
+  } catch {
+    return;
+  }
+  // Acquire may have been released (and the entry deleted from the
+  // registry) while this ticket fetch was in flight.
+  if (registry.get(eventId) !== entry) return;
+
   const url = process.env.NEXT_PUBLIC_WS_URL ?? "ws://localhost:8080/ws";
   const ws = new WebSocket(url);
   entry.ws = ws;
 
   ws.onopen = () => {
     setConnected(entry, true);
-    ws.send(JSON.stringify({ type: "join", eventId }));
+    ws.send(JSON.stringify({ type: "join", eventId, ticket }));
   };
   ws.onmessage = (event) => {
     try {
