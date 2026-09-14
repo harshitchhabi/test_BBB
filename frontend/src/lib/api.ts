@@ -65,9 +65,29 @@ export function isValidAmount(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value > 0 && value <= MAX_REASONABLE_AMOUNT;
 }
 
+// Every route that takes an id from the URL (e.g. /bids/:bidId/void)
+// passes it straight into a `WHERE id = $1` against a uuid column with
+// no format check first — found live via a full smoke test: a malformed
+// id (not shaped like a UUID at all) makes Postgres itself reject the
+// query with SQLSTATE 22P02 ("invalid input syntax"), which isn't a
+// GameError, so it used to fall through to a bare 500. That's not a
+// security hole (nothing leaks, nothing crashes the process, and it was
+// already logged server-side), but a bad/stale/copy-pasted id in a URL
+// is exactly the kind of ordinary mistake that shouldn't come back as a
+// scary "Something went wrong" instead of a plain "not found" — so this
+// one specific Postgres error code, and only this one, is mapped to a
+// clean 404 here, centrally, rather than adding a UUID-format check to
+// every one of the ~54 route files that takes an id.
+function isInvalidTextRepresentation(err: unknown): boolean {
+  return typeof err === "object" && err !== null && "code" in err && (err as { code?: unknown }).code === "22P02";
+}
+
 export function apiErrorResponse(err: unknown) {
   if (err instanceof GameError) {
     return NextResponse.json({ error: err.code, message: err.message }, { status: HTTP_STATUS_BY_CODE[err.code] });
+  }
+  if (isInvalidTextRepresentation(err)) {
+    return NextResponse.json({ error: "not_found", message: "Not found." }, { status: 404 });
   }
   console.error("Unhandled error in API route:", err);
   return NextResponse.json({ error: "internal_error", message: "Something went wrong." }, { status: 500 });
