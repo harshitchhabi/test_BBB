@@ -78,15 +78,24 @@ export function isValidAmount(value: unknown): value is number {
 // one specific Postgres error code, and only this one, is mapped to a
 // clean 404 here, centrally, rather than adding a UUID-format check to
 // every one of the ~54 route files that takes an id.
-function isInvalidTextRepresentation(err: unknown): boolean {
-  return typeof err === "object" && err !== null && "code" in err && (err as { code?: unknown }).code === "22P02";
+// Drizzle wraps the underlying pg driver error in its own error object
+// (a "Failed query: ..." Error), with the pg error itself nested one
+// level down as `.cause` rather than exposed as `.code` directly — found
+// by reading the actual logged error shape after the first version of
+// this check (checking err.code on the outer error) turned out not to
+// catch it. Checks both levels so it still works if that ever changes.
+function hasPgErrorCode(err: unknown, code: string): boolean {
+  if (typeof err !== "object" || err === null) return false;
+  if ("code" in err && (err as { code?: unknown }).code === code) return true;
+  if ("cause" in err) return hasPgErrorCode((err as { cause?: unknown }).cause, code);
+  return false;
 }
 
 export function apiErrorResponse(err: unknown) {
   if (err instanceof GameError) {
     return NextResponse.json({ error: err.code, message: err.message }, { status: HTTP_STATUS_BY_CODE[err.code] });
   }
-  if (isInvalidTextRepresentation(err)) {
+  if (hasPgErrorCode(err, "22P02")) {
     return NextResponse.json({ error: "not_found", message: "Not found." }, { status: 404 });
   }
   console.error("Unhandled error in API route:", err);
