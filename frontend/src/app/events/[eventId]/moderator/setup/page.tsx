@@ -97,6 +97,8 @@ export default function ModeratorSetupPage({ params }: { params: Promise<{ event
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [settingsBusy, setSettingsBusy] = useState(false);
   const [settingsMessage, setSettingsMessage] = useState<string | null>(null);
+  const [gameSettingsBusy, setGameSettingsBusy] = useState(false);
+  const [gameSettingsMessage, setGameSettingsMessage] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     const res = await fetch(`/api/events/${eventId}/overview`);
@@ -178,12 +180,43 @@ export default function ModeratorSetupPage({ params }: { params: Promise<{ event
     ["advancedCityScoringEnabled", "Advanced city scoring enabled"],
   ];
 
-  async function saveSettings() {
+  // Deliberately its own request, sending only customRulesNote — this is
+  // the "edit what's displayed as rules" action, and it must never be
+  // able to touch any of the numbers below that actual gameplay logic
+  // reads (starting tokens, tax rates, durations, ...). Saving the rules
+  // text can never change how the game behaves, only what teams see
+  // written on the Rules page.
+  async function saveRulesText() {
     if (settingsBusy) return;
     setSettingsBusy(true);
     setSettingsMessage(null);
     try {
-      const updates: Record<string, number | boolean | string> = {};
+      const res = await fetch(`/api/events/${eventId}/settings`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ customRulesNote: typeof settingsForm.customRulesNote === "string" ? settingsForm.customRulesNote : "" }),
+      });
+      const body = await res.json();
+      if (!res.ok) setSettingsMessage(body.message);
+      else {
+        setSettingsMessage("Rules text saved.");
+        refresh();
+      }
+    } finally {
+      setSettingsBusy(false);
+    }
+  }
+
+  // Separate from saveRulesText on purpose: these numbers ARE read by the
+  // actual game engine (auction/trade/city logic), so changing and saving
+  // them here really does change how the event plays out — unlike the
+  // rules text above, which is purely what's displayed.
+  async function saveGameSettings() {
+    if (gameSettingsBusy) return;
+    setGameSettingsBusy(true);
+    setGameSettingsMessage(null);
+    try {
+      const updates: Record<string, number | boolean> = {};
       for (const [key] of INTEGER_SETTINGS_FIELDS) {
         const raw = settingsForm[key];
         if (typeof raw === "string" && raw.trim() !== "") updates[key] = Number(raw);
@@ -191,7 +224,6 @@ export default function ModeratorSetupPage({ params }: { params: Promise<{ event
       for (const [key] of BOOLEAN_SETTINGS_FIELDS) {
         updates[key] = Boolean(settingsForm[key]);
       }
-      updates.customRulesNote = typeof settingsForm.customRulesNote === "string" ? settingsForm.customRulesNote : "";
 
       const res = await fetch(`/api/events/${eventId}/settings`, {
         method: "PATCH",
@@ -199,13 +231,13 @@ export default function ModeratorSetupPage({ params }: { params: Promise<{ event
         body: JSON.stringify(updates),
       });
       const body = await res.json();
-      if (!res.ok) setSettingsMessage(body.message);
+      if (!res.ok) setGameSettingsMessage(body.message);
       else {
-        setSettingsMessage("Saved.");
+        setGameSettingsMessage("Game settings saved.");
         refresh();
       }
     } finally {
-      setSettingsBusy(false);
+      setGameSettingsBusy(false);
     }
   }
 
@@ -531,17 +563,17 @@ export default function ModeratorSetupPage({ params }: { params: Promise<{ event
         )}
       </Panel>
 
-      <Panel className="w-full max-w-lg mt-4">
-        <PanelTitle>RULES &amp; SETTINGS</PanelTitle>
+      <Panel className="w-full max-w-lg mt-4 border-2 border-yellow-600">
+        <PanelTitle>EDIT RULES TEXT</PanelTitle>
         <p className="text-white/70 text-sm mb-3">
-          Everything below is exactly what the Rules page shows every team. The note is free text — announcements,
-          house rules, anything the structured numbers below don&apos;t cover.
+          Free text shown at the top of the Rules page for every team — announcements, house rules, anything the
+          numbers on the Rules page don&apos;t cover. This is purely what&apos;s displayed: saving it can never change
+          how the game actually plays out.
         </p>
         {!settingsLoaded ? (
           <p className="text-white/70">Loading…</p>
         ) : (
           <>
-            <label className="block text-yellow-300 text-sm font-bold mb-1">Custom rules note</label>
             <textarea
               value={typeof settingsForm.customRulesNote === "string" ? settingsForm.customRulesNote : ""}
               onChange={(e) => setSettingsForm((f) => ({ ...f, customRulesNote: e.target.value }))}
@@ -550,7 +582,25 @@ export default function ModeratorSetupPage({ params }: { params: Promise<{ event
               maxLength={4000}
               className="w-full px-3 py-2 rounded text-black mb-4"
             />
+            <WoodButton variant="primary" disabled={settingsBusy} onClick={saveRulesText}>
+              {settingsBusy ? "Saving…" : "Save rules text"}
+            </WoodButton>
+            {settingsMessage && <p className="text-yellow-300 mt-3">{settingsMessage}</p>}
+          </>
+        )}
+      </Panel>
 
+      <Panel className="w-full max-w-lg mt-4 border-2 border-red-800">
+        <PanelTitle>GAME SETTINGS</PanelTitle>
+        <p className="text-white/70 text-sm mb-3">
+          These numbers are read by the actual game engine — changing and saving them here changes how the event
+          plays out (starting tokens, tax rates, durations, and so on), not just what&apos;s displayed. Separate from
+          the rules text above on purpose.
+        </p>
+        {!settingsLoaded ? (
+          <p className="text-white/70">Loading…</p>
+        ) : (
+          <>
             <div className="grid grid-cols-2 gap-2 mb-4">
               {INTEGER_SETTINGS_FIELDS.map(([key, label]) => (
                 <label key={key} className="text-white/90 text-xs">
@@ -579,10 +629,10 @@ export default function ModeratorSetupPage({ params }: { params: Promise<{ event
               ))}
             </div>
 
-            <WoodButton variant="primary" disabled={settingsBusy} onClick={saveSettings}>
-              {settingsBusy ? "Saving…" : "Save rules & settings"}
+            <WoodButton variant="danger" disabled={gameSettingsBusy} onClick={saveGameSettings}>
+              {gameSettingsBusy ? "Saving…" : "Save game settings"}
             </WoodButton>
-            {settingsMessage && <p className="text-yellow-300 mt-3">{settingsMessage}</p>}
+            {gameSettingsMessage && <p className="text-yellow-300 mt-3">{gameSettingsMessage}</p>}
           </>
         )}
       </Panel>
