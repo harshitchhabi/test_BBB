@@ -132,7 +132,7 @@ describe("resetEventForNewRound", () => {
     expect(round2.sequence).toBe(1); // sequence restarted, not continuing from round 1's rounds
   });
 
-  it("requires a reason and staff status", async () => {
+  it("requires staff status, but no longer requires a typed reason", async () => {
     const [event] = await dbModule.db.insert(schema.events).values({ name: "Reset Auth Test" }).returning();
     const [moderator] = await dbModule.db.insert(schema.participants).values({ name: "Mod", email: `mod2-${event.id}@test.local`, username: `mod2-${event.id}`, passwordHash: "$2a$10$CwTycUXWue0Thq9StjUM0uJ8oxL/Yjyq6XvXqAtVvjGdiWZOWXQNi" }).returning();
     await dbModule.db.insert(schema.eventStaff).values({ eventId: event.id, participantId: moderator.id, role: "staff" });
@@ -142,8 +142,14 @@ describe("resetEventForNewRound", () => {
       engine.resetEventForNewRound({ eventId: event.id, actorParticipantId: randomPerson.id, reason: "test" }),
     ).rejects.toMatchObject({ code: "forbidden" });
 
-    await expect(
-      engine.resetEventForNewRound({ eventId: event.id, actorParticipantId: moderator.id, reason: "" }),
-    ).rejects.toMatchObject({ code: "conflict" });
+    // A blank reason no longer blocks the reset - just logged with a
+    // clear placeholder.
+    const reset = await engine.resetEventForNewRound({ eventId: event.id, actorParticipantId: moderator.id, reason: "" });
+    expect(reset.status).toBe("setup");
+    const [entry] = await dbModule.db
+      .select()
+      .from(schema.auditLog)
+      .where(dbModule.and(dbModule.eq(schema.auditLog.eventId, event.id), dbModule.eq(schema.auditLog.action, "event.reset_for_new_round")));
+    expect(entry.reason).toBe("No reason given");
   });
 });

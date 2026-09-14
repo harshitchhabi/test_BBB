@@ -168,10 +168,11 @@ export async function createTeamLogin(params: {
   actorParticipantId: string;
   teamName: string;
   username: string;
+  password?: string;
 }) {
   return runInTransaction(async (tx) => {
     await assertStaffTx(tx, params.eventId, params.actorParticipantId);
-    const { participant, password } = await createLoginTx(tx, { name: params.teamName, username: params.username });
+    const { participant, password } = await createLoginTx(tx, { name: params.teamName, username: params.username, password: params.password });
     const team = await createTeamTx(tx, { eventId: params.eventId, ownerParticipantId: participant.id, name: params.teamName });
     await recordAudit(tx, {
       eventId: params.eventId,
@@ -274,6 +275,7 @@ export async function createStaffLogin(params: {
   actorParticipantId: string;
   name: string;
   username: string;
+  password?: string;
 }) {
   return runInTransaction(async (tx) => {
     const [event] = await tx.select().from(events).where(eq(events.id, params.eventId));
@@ -290,7 +292,7 @@ export async function createStaffLogin(params: {
       throw new GameError("forbidden", "Only the event's creator can claim the first staff slot for this event.");
     }
 
-    const { participant, password } = await createLoginTx(tx, { name: params.name, username: params.username });
+    const { participant, password } = await createLoginTx(tx, { name: params.name, username: params.username, password: params.password });
 
     const [staffRow] = await tx
       .insert(eventStaff)
@@ -318,11 +320,10 @@ export async function resetLoginPassword(params: {
   eventId: string;
   actorParticipantId: string;
   participantId: string;
-  reason: string;
+  reason?: string;
 }) {
   return runInTransaction(async (tx) => {
     await assertStaffTx(tx, params.eventId, params.actorParticipantId);
-    if (!params.reason.trim()) throw new GameError("conflict", "A reason is required to reset a login's password.");
 
     const [participant] = await tx.select().from(participants).where(eq(participants.id, params.participantId)).for("update");
     if (!participant) throw new GameError("not_found", "Login not found.");
@@ -376,11 +377,10 @@ export async function deleteStaffLogin(params: {
   eventId: string;
   actorParticipantId: string;
   participantId: string;
-  reason: string;
+  reason?: string;
 }) {
   return runInTransaction(async (tx, queueBroadcast) => {
     await assertStaffTx(tx, params.eventId, params.actorParticipantId);
-    if (!params.reason.trim()) throw new GameError("conflict", "A reason is required to remove a staff login.");
 
     const [staffRow] = await tx
       .select()

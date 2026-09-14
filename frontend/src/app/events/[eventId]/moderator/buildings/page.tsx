@@ -56,15 +56,15 @@ export default function ModeratorBuildingsPage({ params }: { params: Promise<{ e
     }
   }
 
-  if (loadError && buildings === null) return <PageFrame><ModNav eventId={eventId} /><p className="text-red-300 text-center mt-8">{loadError}</p></PageFrame>;
+  if (loadError && buildings === null) return <PageFrame><ModNav eventId={eventId} /><p className="text-red-100 bg-red-950/80 px-3 py-2 rounded-md font-medium text-center mt-8">{loadError}</p></PageFrame>;
   if (buildings === null) return <PageFrame><ModNav eventId={eventId} /><p className="text-[#F1EBB5]">Loading…</p></PageFrame>;
 
   return (
     <PageFrame>
       <ModNav eventId={eventId} />
       <HeaderBanner>BUILD / DEED DESK</HeaderBanner>
-      {loadError && <p className="text-red-300 mb-3">{loadError}</p>}
-      {message && <p className="text-red-300 mb-3">{message}</p>}
+      {loadError && <p className="text-red-100 bg-red-950/80 px-3 py-2 rounded-md font-medium mb-3">{loadError}</p>}
+      {message && <p className="text-red-100 bg-red-950/80 px-3 py-2 rounded-md font-medium mb-3">{message}</p>}
 
       <Panel className="w-full mb-4">
         <PanelTitle>CONSTRUCTED BUILDINGS</PanelTitle>

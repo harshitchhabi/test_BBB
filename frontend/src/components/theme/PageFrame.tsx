@@ -32,7 +32,7 @@ export function PageFrame({ children }: { children: React.ReactNode }) {
       style={{ backgroundImage: "url('/assets/images/background.png')" }}
     >
       <div
-        className="relative w-[94%] max-w-6xl min-h-[80vh] p-4 md:p-6 flex flex-col items-center rounded-lg shadow-xl minecraft-font"
+        className="relative w-[94%] max-w-6xl min-h-[80vh] p-4 md:p-6 flex flex-col items-center rounded-lg shadow-xl"
         style={{
           backgroundImage: "url('/assets/images/main-background.png')",
           backgroundSize: "cover",

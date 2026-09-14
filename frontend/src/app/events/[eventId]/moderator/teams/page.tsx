@@ -8,6 +8,7 @@ import { ModNav } from "../mod-nav";
 import { PageFrame } from "@/components/theme/PageFrame";
 import { HeaderBanner } from "@/components/theme/HeaderBanner";
 import { Panel, PanelTitle, WoodButton } from "@/components/theme/Panel";
+import { ConfirmDialog, type ConfirmDialogState } from "@/components/theme/ConfirmDialog";
 
 // Section 7.9 "Teams & Balances" + "Incidents" (team withdrawal, balance
 // adjustment, manual correction) combined into one screen. Task 1 added
@@ -24,8 +25,10 @@ export default function ModeratorTeamsPage({ params }: { params: Promise<{ event
 
   const [teamName, setTeamName] = useState("");
   const [teamUsername, setTeamUsername] = useState("");
+  const [teamPassword, setTeamPassword] = useState("");
   const [createBusy, setCreateBusy] = useState(false);
   const [issuedCredential, setIssuedCredential] = useState<{ username: string; password: string } | null>(null);
+  const [confirmState, setConfirmState] = useState<ConfirmDialogState | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -60,33 +63,39 @@ export default function ModeratorTeamsPage({ params }: { params: Promise<{ event
   }
 
   function deleteTeam(teamId: string, teamName: string) {
-    const reason = window.prompt(
-      `Permanently delete team "${teamName}"? This cannot be undone (though the audit log keeps a record). Enter a reason to confirm, or cancel:`,
-    );
-    if (!reason) return;
-    call(`/api/events/${eventId}/teams/${teamId}`, { reason }, "DELETE");
+    setConfirmState({
+      title: "Delete team",
+      message: `Permanently delete team "${teamName}"? This cannot be undone (though the audit log keeps a record).`,
+      confirmLabel: "Delete",
+      danger: true,
+      onConfirm: (reason) => call(`/api/events/${eventId}/teams/${teamId}`, { reason }, "DELETE"),
+    });
   }
 
   function resetPassword(participantId: string, teamName: string) {
-    const reason = window.prompt(`Reset the login password for "${teamName}"? Their current session will be signed out. Enter a reason to confirm, or cancel:`);
-    if (!reason) return;
-    (async () => {
-      setBusy(true);
-      setMessage(null);
-      setIssuedCredential(null);
-      try {
-        const res = await fetch(`/api/events/${eventId}/logins/${participantId}/reset-password`, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ reason }),
-        });
-        const body = await res.json();
-        if (!res.ok) setMessage(body.message);
-        else setIssuedCredential({ username: body.username, password: body.password });
-      } finally {
-        setBusy(false);
-      }
-    })();
+    setConfirmState({
+      title: "Reset password",
+      message: `Reset the login password for "${teamName}"? Their current session will be signed out.`,
+      confirmLabel: "Reset password",
+      danger: true,
+      onConfirm: async (reason) => {
+        setBusy(true);
+        setMessage(null);
+        setIssuedCredential(null);
+        try {
+          const res = await fetch(`/api/events/${eventId}/logins/${participantId}/reset-password`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ reason }),
+          });
+          const body = await res.json();
+          if (!res.ok) setMessage(body.message);
+          else setIssuedCredential({ username: body.username, password: body.password });
+        } finally {
+          setBusy(false);
+        }
+      },
+    });
   }
 
   async function createTeam() {
@@ -98,7 +107,7 @@ export default function ModeratorTeamsPage({ params }: { params: Promise<{ event
       const res = await fetch(`/api/events/${eventId}/teams`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ name: teamName, username: teamUsername }),
+        body: JSON.stringify({ name: teamName, username: teamUsername, password: teamPassword || undefined }),
       });
       const body = await res.json();
       if (!res.ok) {
@@ -107,6 +116,7 @@ export default function ModeratorTeamsPage({ params }: { params: Promise<{ event
         setIssuedCredential({ username: body.username, password: body.password });
         setTeamName("");
         setTeamUsername("");
+        setTeamPassword("");
         refresh();
       }
     } finally {
@@ -114,21 +124,27 @@ export default function ModeratorTeamsPage({ params }: { params: Promise<{ event
     }
   }
 
-  if (loadError && !overview) return <PageFrame><ModNav eventId={eventId} /><p className="text-red-300 text-center mt-8">{loadError}</p></PageFrame>;
+  if (loadError && !overview) return <PageFrame><ModNav eventId={eventId} /><p className="text-red-100 bg-red-950/80 px-3 py-2 rounded-md font-medium text-center mt-8">{loadError}</p></PageFrame>;
   if (!overview) return <PageFrame><p className="text-[#F1EBB5]">Loading…</p></PageFrame>;
 
   return (
     <PageFrame>
       <ModNav eventId={eventId} />
       <HeaderBanner>TEAMS & INCIDENTS</HeaderBanner>
-      {loadError && <p className="text-red-300 mb-3">{loadError}</p>}
-      {message && <p className="text-red-300 mb-3">{message}</p>}
+      {loadError && <p className="text-red-100 bg-red-950/80 px-3 py-2 rounded-md font-medium mb-3">{loadError}</p>}
+      {message && <p className="text-red-100 bg-red-950/80 px-3 py-2 rounded-md font-medium mb-3">{message}</p>}
 
       <Panel className="w-full mb-4">
         <PanelTitle>CREATE A TEAM LOGIN</PanelTitle>
         <div className="flex gap-2 flex-wrap">
           <input value={teamName} onChange={(e) => setTeamName(e.target.value)} placeholder="Team name" className="flex-1 min-w-40 px-3 py-2 rounded text-black" />
           <input value={teamUsername} onChange={(e) => setTeamUsername(e.target.value)} placeholder="username" className="flex-1 min-w-32 px-3 py-2 rounded text-black" />
+          <input
+            value={teamPassword}
+            onChange={(e) => setTeamPassword(e.target.value)}
+            placeholder="password (optional — auto-generated if left blank)"
+            className="flex-1 min-w-64 px-3 py-2 rounded text-black"
+          />
           <WoodButton variant="primary" onClick={createTeam} disabled={createBusy || !teamName || !teamUsername}>
             {createBusy ? "Creating…" : "Create"}
           </WoodButton>
@@ -192,6 +208,7 @@ export default function ModeratorTeamsPage({ params }: { params: Promise<{ event
           ))}
         </div>
       </Panel>
+      <ConfirmDialog state={confirmState} onClose={() => setConfirmState(null)} />
     </PageFrame>
   );
 }

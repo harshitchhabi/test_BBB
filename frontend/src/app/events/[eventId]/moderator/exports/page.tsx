@@ -39,7 +39,7 @@ export default function ModeratorExportsPage({ params }: { params: Promise<{ eve
 
       <Panel className="w-full mb-4">
         <PanelTitle>STANDINGS</PanelTitle>
-        {loadError && <p className="text-red-300">{loadError}</p>}
+        {loadError && <p className="text-red-100 bg-red-950/80 px-3 py-2 rounded-md font-medium">{loadError}</p>}
         {!loadError && !standings && <p className="text-white/70">Loading…</p>}
         {!loadError && standings && standings.length === 0 && (
           <p className="text-white/70">No final scores yet — reveal cities on the Stage 3 Cities screen first.</p>

@@ -8,6 +8,7 @@ import { ModNav } from "../mod-nav";
 import { PageFrame } from "@/components/theme/PageFrame";
 import { HeaderBanner } from "@/components/theme/HeaderBanner";
 import { Panel, PanelTitle, WoodButton } from "@/components/theme/Panel";
+import { ConfirmDialog, type ConfirmDialogState } from "@/components/theme/ConfirmDialog";
 
 // Section 7.9 Stage 3 controls: start city, accept/close bid, assign last
 // city, reveal multipliers. Score & Reveal folds into this screen too —
@@ -23,6 +24,7 @@ export default function ModeratorCitiesPage({ params }: { params: Promise<{ even
   const [busy, setBusy] = useState(false);
   const [standings, setStandings] = useState<any[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [confirmState, setConfirmState] = useState<ConfirmDialogState | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -66,12 +68,17 @@ export default function ModeratorCitiesPage({ params }: { params: Promise<{ even
     }
   }
 
-  if (loadError && !overview) return <PageFrame><ModNav eventId={eventId} /><p className="text-red-300 text-center mt-8">{loadError}</p></PageFrame>;
+  if (loadError && !overview) return <PageFrame><ModNav eventId={eventId} /><p className="text-red-100 bg-red-950/80 px-3 py-2 rounded-md font-medium text-center mt-8">{loadError}</p></PageFrame>;
   if (!overview) return <PageFrame><p className="text-[#F1EBB5]">Loading…</p></PageFrame>;
 
   function revealAndFinalize() {
-    if (!window.confirm("Reveal all city multipliers and finalize scores? This is irreversible for this round — every team's final rank locks in.")) return;
-    call(`/api/events/${eventId}/cities/reveal`);
+    setConfirmState({
+      title: "Reveal & finalize scores",
+      message: "Reveal all city multipliers and finalize scores? This is irreversible for this round — every team's final rank locks in.",
+      confirmLabel: "Reveal & finalize",
+      danger: true,
+      onConfirm: () => call(`/api/events/${eventId}/cities/reveal`),
+    });
   }
 
   const liveAuctionByCity = new Map(auctions.filter((a) => a.status === "live").map((a) => [a.cityId, a]));
@@ -87,8 +94,8 @@ export default function ModeratorCitiesPage({ params }: { params: Promise<{ even
     <PageFrame>
       <ModNav eventId={eventId} />
       <HeaderBanner>STAGE 3: CITIES & REVEAL</HeaderBanner>
-      {loadError && <p className="text-red-300 mb-3">{loadError}</p>}
-      {message && <p className="text-red-300 mb-3">{message}</p>}
+      {loadError && <p className="text-red-100 bg-red-950/80 px-3 py-2 rounded-md font-medium mb-3">{loadError}</p>}
+      {message && <p className="text-red-100 bg-red-950/80 px-3 py-2 rounded-md font-medium mb-3">{message}</p>}
 
       <WoodButton variant="danger" disabled={busy} onClick={revealAndFinalize} className="mb-4 text-lg">
         Reveal all multipliers & finalize scores
@@ -155,6 +162,7 @@ export default function ModeratorCitiesPage({ params }: { params: Promise<{ even
           })}
         </div>
       </Panel>
+      <ConfirmDialog state={confirmState} onClose={() => setConfirmState(null)} />
     </PageFrame>
   );
 }

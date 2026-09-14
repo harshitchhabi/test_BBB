@@ -6,6 +6,7 @@ import { ModNav } from "../mod-nav";
 import { PageFrame } from "@/components/theme/PageFrame";
 import { HeaderBanner } from "@/components/theme/HeaderBanner";
 import { Panel, PanelTitle, WoodButton } from "@/components/theme/Panel";
+import { ConfirmDialog, type ConfirmDialogState } from "@/components/theme/ConfirmDialog";
 
 // Section 7.8 "Event Setup" nav item. Materials/recipes/shocks/cities are
 // seeded from packages/db/seed (Phase 0) rather than authored through a
@@ -31,12 +32,14 @@ export default function ModeratorSetupPage({ params }: { params: Promise<{ event
   const { status: sessionStatus } = useSession();
   const [staffName, setStaffName] = useState("");
   const [staffUsername, setStaffUsername] = useState("");
+  const [staffPassword, setStaffPassword] = useState("");
   const [staffBusy, setStaffBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [issuedCredential, setIssuedCredential] = useState<{ username: string; password: string } | null>(null);
   const [staffList, setStaffList] = useState<Array<{ participantId: string; name: string; username: string }> | null>(null);
   const [staffListError, setStaffListError] = useState<string | null>(null);
   const [removeBusy, setRemoveBusy] = useState(false);
+  const [confirmState, setConfirmState] = useState<ConfirmDialogState | null>(null);
 
   const [overview, setOverview] = useState<any>(null);
   const [stageMessage, setStageMessage] = useState<string | null>(null);
@@ -178,10 +181,18 @@ export default function ModeratorSetupPage({ params }: { params: Promise<{ event
   // Frees the username for reuse without touching this login's history —
   // see team-service.ts's deleteStaffLogin. Refuses to remove the last
   // remaining staff login server-side, so this can't lock the event out.
-  async function removeStaff(participantId: string, name: string) {
+  function removeStaff(participantId: string, name: string) {
     if (removeBusy) return;
-    const reason = window.prompt(`Remove staff login "${name}"? This frees the username for reuse. Enter a reason to confirm, or cancel:`);
-    if (!reason) return;
+    setConfirmState({
+      title: "Remove staff login",
+      message: `Remove staff login "${name}"? This frees the username for reuse.`,
+      confirmLabel: "Remove",
+      danger: true,
+      onConfirm: (reason) => doRemoveStaff(participantId, reason),
+    });
+  }
+
+  async function doRemoveStaff(participantId: string, reason: string) {
     setRemoveBusy(true);
     try {
       const res = await fetch(`/api/events/${eventId}/staff/${participantId}`, {
@@ -206,7 +217,7 @@ export default function ModeratorSetupPage({ params }: { params: Promise<{ event
       const res = await fetch(`/api/events/${eventId}/staff`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ name: staffName, username: staffUsername }),
+        body: JSON.stringify({ name: staffName, username: staffUsername, password: staffPassword || undefined }),
       });
       const body = await res.json();
       if (!res.ok) {
@@ -215,6 +226,7 @@ export default function ModeratorSetupPage({ params }: { params: Promise<{ event
         setIssuedCredential({ username: body.username, password: body.password });
         setStaffName("");
         setStaffUsername("");
+        setStaffPassword("");
         refreshStaffList();
       }
     } finally {
@@ -267,10 +279,12 @@ export default function ModeratorSetupPage({ params }: { params: Promise<{ event
   }
 
   // Task 3: jump straight to any real stage, bypassing the normal
-  // forward-only sequence. Always requires a reason; the server voids
-  // whatever round/auction is currently live rather than abandoning it.
+  // forward-only sequence. A reason is optional (recorded with a
+  // placeholder if left blank); the confirmation checkbox is the actual
+  // safety gate. The server voids whatever round/auction is currently
+  // live rather than abandoning it.
   async function forceStage() {
-    if (forceBusy || !forceTarget || !forceReason || !forceConfirmed) return;
+    if (forceBusy || !forceTarget || !forceConfirmed) return;
     setForceBusy(true);
     setForceMessage(null);
     try {
@@ -338,7 +352,7 @@ export default function ModeratorSetupPage({ params }: { params: Promise<{ event
                 </WoodButton>
               ))}
             </div>
-            {stageMessage && <p className="text-red-300 mt-3">{stageMessage}</p>}
+            {stageMessage && <p className="text-red-100 bg-red-950/80 px-3 py-2 rounded-md font-medium mt-3">{stageMessage}</p>}
           </>
         ) : (
           <p className="text-white/70">Loading…</p>
@@ -374,7 +388,7 @@ export default function ModeratorSetupPage({ params }: { params: Promise<{ event
         <WoodButton variant="danger" disabled={forceBusy || !forceTarget || !forceReason || !forceConfirmed} onClick={forceStage}>
           Force stage change
         </WoodButton>
-        {forceMessage && <p className="text-red-300 mt-3">{forceMessage}</p>}
+        {forceMessage && <p className="text-red-100 bg-red-950/80 px-3 py-2 rounded-md font-medium mt-3">{forceMessage}</p>}
       </Panel>
 
       <Panel className="w-full max-w-lg mb-4 border-2 border-red-800">
@@ -388,7 +402,7 @@ export default function ModeratorSetupPage({ params }: { params: Promise<{ event
         <input
           value={resetReason}
           onChange={(e) => setResetReason(e.target.value)}
-          placeholder="Reason (e.g. 'End of round 1') — required"
+          placeholder="Reason (optional, e.g. 'End of round 1')"
           className="w-full px-3 py-2 rounded text-black mb-2"
         />
         <label className="flex items-center gap-2 text-white/90 text-sm mb-3">
@@ -400,10 +414,10 @@ export default function ModeratorSetupPage({ params }: { params: Promise<{ event
           />
           I understand this deletes all teams and progress for this event.
         </label>
-        <WoodButton variant="danger" disabled={resetBusy || !resetReason || !resetConfirmed} onClick={resetForNewRound}>
+        <WoodButton variant="danger" disabled={resetBusy || !resetConfirmed} onClick={resetForNewRound}>
           Reset event for a new round
         </WoodButton>
-        {resetMessage && <p className="text-red-300 mt-3">{resetMessage}</p>}
+        {resetMessage && <p className="text-red-100 bg-red-950/80 px-3 py-2 rounded-md font-medium mt-3">{resetMessage}</p>}
       </Panel>
 
       <Panel className="w-full max-w-lg">
@@ -415,11 +429,17 @@ export default function ModeratorSetupPage({ params }: { params: Promise<{ event
         <div className="flex gap-2 flex-wrap">
           <input value={staffName} onChange={(e) => setStaffName(e.target.value)} placeholder="Name (e.g. 'Front desk')" className="flex-1 min-w-40 px-3 py-2 rounded text-black" />
           <input value={staffUsername} onChange={(e) => setStaffUsername(e.target.value)} placeholder="username" className="flex-1 min-w-32 px-3 py-2 rounded text-black" />
+          <input
+            value={staffPassword}
+            onChange={(e) => setStaffPassword(e.target.value)}
+            placeholder="password (optional — auto-generated if left blank)"
+            className="flex-1 min-w-64 px-3 py-2 rounded text-black"
+          />
           <WoodButton variant="primary" onClick={addStaff} disabled={staffBusy || !staffName || !staffUsername}>
             {staffBusy ? "Creating…" : "Create"}
           </WoodButton>
         </div>
-        {message && <p className="text-red-300 mt-3">{message}</p>}
+        {message && <p className="text-red-100 bg-red-950/80 px-3 py-2 rounded-md font-medium mt-3">{message}</p>}
         {issuedCredential && (
           <div className="mt-3 bg-black/40 rounded p-3 text-sm">
             <p className="text-yellow-300 font-bold">Shown once — write it down now:</p>
@@ -432,7 +452,7 @@ export default function ModeratorSetupPage({ params }: { params: Promise<{ event
 
       <Panel className="w-full max-w-lg mt-4">
         <PanelTitle>CURRENT STAFF</PanelTitle>
-        {staffListError && <p className="text-red-300 mb-2">{staffListError}</p>}
+        {staffListError && <p className="text-red-100 bg-red-950/80 px-3 py-2 rounded-md font-medium mb-2">{staffListError}</p>}
         {!staffListError && !staffList && <p className="text-white/70">Loading…</p>}
         {staffList && staffList.length === 0 && <p className="text-white/70">No staff logins yet.</p>}
         {staffList && staffList.length > 0 && (
@@ -511,6 +531,7 @@ export default function ModeratorSetupPage({ params }: { params: Promise<{ event
         Materials, recipes, Market Shock cards, and city blocks are configured via <code>packages/db/seed/data.ts</code>
         and applied with <code>npx tsx seed/run.ts</code> before the event starts.
       </p>
+      <ConfirmDialog state={confirmState} onClose={() => setConfirmState(null)} />
     </PageFrame>
   );
 }

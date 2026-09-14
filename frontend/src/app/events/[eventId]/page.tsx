@@ -41,7 +41,7 @@ export default function EventHomePage({ params }: { params: Promise<{ eventId: s
   if (loadError) {
     return (
       <PageFrame>
-        <p className="text-red-300 text-center mt-8">{loadError}</p>
+        <p className="text-red-100 bg-red-950/80 px-3 py-2 rounded-md font-medium text-center mt-8">{loadError}</p>
       </PageFrame>
     );
   }

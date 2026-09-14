@@ -89,7 +89,7 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ eventId:
     return (
       <PageFrame>
         <TeamNav eventId={eventId} />
-        <p className="text-red-300 text-center mt-8">{loadError}</p>
+        <p className="text-red-100 bg-red-950/80 px-3 py-2 rounded-md font-medium text-center mt-8">{loadError}</p>
       </PageFrame>
     );
   }
@@ -173,7 +173,7 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ eventId:
                       : "This lot's timer has run out — waiting for the moderator to close it."}
                 </p>
               )}
-              {error && <p className="text-red-300 mt-3">{error}</p>}
+              {error && <p className="text-red-100 bg-red-950/80 px-3 py-2 rounded-md font-medium mt-3">{error}</p>}
             </Panel>
           ) : (
             <Panel className="text-center py-12">

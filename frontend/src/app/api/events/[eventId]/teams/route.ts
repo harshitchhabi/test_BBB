@@ -10,15 +10,24 @@ export async function POST(req: Request, { params }: { params: Promise<{ eventId
   try {
     const { eventId } = await params;
     const participant = await requireParticipant();
-    const { name, username } = await req.json();
+    const { name, username, password } = await req.json();
     if (typeof name !== "string" || name.trim().length === 0) {
       return NextResponse.json({ error: "invalid_input", message: "Team name is required." }, { status: 400 });
     }
     if (typeof username !== "string" || username.trim().length === 0) {
       return NextResponse.json({ error: "invalid_input", message: "A username is required." }, { status: 400 });
     }
+    if (password !== undefined && typeof password !== "string") {
+      return NextResponse.json({ error: "invalid_input", message: "Password must be a string." }, { status: 400 });
+    }
 
-    const result = await createTeamLogin({ eventId, actorParticipantId: participant.id, teamName: name.trim(), username });
+    const result = await createTeamLogin({
+      eventId,
+      actorParticipantId: participant.id,
+      teamName: name.trim(),
+      username,
+      password: password || undefined,
+    });
     return NextResponse.json(result);
   } catch (err) {
     return apiErrorResponse(err);

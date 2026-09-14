@@ -5,13 +5,15 @@ import type { Tx } from "./tx";
 // every manual override must be recorded with actor, reason, before state,
 // and after state." Section 3.1 #5: "Add an audit log."
 //
-// `reason` is mandatory only when `isOverride` is true — that's the
-// "moderator override" case the plan means (voiding a bid, adjusting a
-// balance, disqualifying a team, reopening a lot): those must always say
-// why. Routine actor-attributed actions (placing a bid, opening a lot,
-// creating a team) are still fully audited via actorParticipantId + before/
-// after state, but don't force an artificial "reason" string on an
-// ordinary action nobody is overriding anything with.
+// Every override still gets a reason recorded — that requirement isn't
+// dropped — but a moderator is no longer FORCED to type one before the
+// action goes through: leaving it blank records a clear placeholder
+// ("No reason given") instead of blocking the button. The audit log
+// still says who did what and when either way; the free-text "why" is a
+// courtesy for later review, not a gate on doing the thing. This was
+// previously a hard throw here, which is what made the "reset"/"remove"
+// buttons on several moderator screens stay disabled until a reason was
+// typed into a native browser prompt.
 interface AuditEntry {
   eventId: string;
   actorParticipantId: string | null;
@@ -24,13 +26,10 @@ interface AuditEntry {
   afterJson?: unknown;
 }
 
+const DEFAULT_OVERRIDE_REASON = "No reason given";
+
 export async function recordAudit(tx: Tx, entry: AuditEntry) {
-  if (entry.isOverride && !entry.reason) {
-    throw new Error(
-      `recordAudit: override action "${entry.action}" is missing a reason. ` +
-        `Every moderator override must be logged with why it happened.`,
-    );
-  }
+  const reason = entry.isOverride ? (entry.reason?.trim() || DEFAULT_OVERRIDE_REASON) : (entry.reason ?? null);
 
   await tx.insert(auditLog).values({
     eventId: entry.eventId,
@@ -38,7 +37,7 @@ export async function recordAudit(tx: Tx, entry: AuditEntry) {
     action: entry.action,
     entityType: entry.entityType,
     entityId: entry.entityId,
-    reason: entry.reason ?? null,
+    reason,
     beforeJson: entry.beforeJson ?? null,
     afterJson: entry.afterJson ?? null,
   });

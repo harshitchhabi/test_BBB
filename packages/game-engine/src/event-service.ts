@@ -69,9 +69,6 @@ export async function setEventStatus(params: {
     }
 
     const isOverride = event.status === "paused" || params.status === "paused";
-    if (isOverride && !params.reason) {
-      throw new GameError("conflict", "A reason is required to pause or resume an event.");
-    }
 
     // A live lot mid-bid has nowhere to go once the event leaves
     // stage_1: placeBid/closeLot both require stage_1, so an orphaned
@@ -146,11 +143,10 @@ export async function forceEventStage(params: {
   eventId: string;
   status: string;
   actorParticipantId: string;
-  reason: string;
+  reason?: string;
 }) {
   return runInTransaction(async (tx, queueBroadcast) => {
     await assertStaffTx(tx, params.eventId, params.actorParticipantId);
-    if (!params.reason?.trim()) throw new GameError("conflict", "A reason is required to force an event's stage.");
     if (!REAL_EVENT_STAGES.includes(params.status)) {
       throw new GameError("invalid_input", `"${params.status}" is not a real event stage.`);
     }
@@ -242,10 +238,9 @@ export async function forceEventStage(params: {
 // scout_reports, city_auctions/city_bids, score_snapshots) have to be
 // cleared explicitly first, or the final `DELETE FROM teams` would fail
 // outright.
-export async function resetEventForNewRound(params: { eventId: string; actorParticipantId: string; reason: string }) {
+export async function resetEventForNewRound(params: { eventId: string; actorParticipantId: string; reason?: string }) {
   return runInTransaction(async (tx, queueBroadcast) => {
     await assertStaffTx(tx, params.eventId, params.actorParticipantId);
-    if (!params.reason) throw new GameError("conflict", "A reason is required to reset an event.");
 
     const [event] = await tx.select().from(events).where(eq(events.id, params.eventId)).for("update");
     if (!event) throw new GameError("not_found", "Event not found.");

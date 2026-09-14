@@ -104,7 +104,7 @@ export default function CityAuctionPage({ params }: { params: Promise<{ eventId:
     }
   }
 
-  if (loadError && !overview) return <PageFrame><p className="text-red-300 text-center mt-8">{loadError}</p></PageFrame>;
+  if (loadError && !overview) return <PageFrame><p className="text-red-100 bg-red-950/80 px-3 py-2 rounded-md font-medium text-center mt-8">{loadError}</p></PageFrame>;
   if (!overview) return <PageFrame><p className="text-[#F1EBB5]">Loading…</p></PageFrame>;
 
   const myCity = cities.find((c) => c.assignedTeamId === overview.myTeam?.id);
@@ -117,8 +117,8 @@ export default function CityAuctionPage({ params }: { params: Promise<{ eventId:
     <PageFrame>
       <TeamNav eventId={eventId} />
       <HeaderBanner>CITY AUCTION</HeaderBanner>
-      {loadError && <p className="text-red-300 mb-3">{loadError}</p>}
-      {message && <p className="text-red-300 mb-3">{message}</p>}
+      {loadError && <p className="text-red-100 bg-red-950/80 px-3 py-2 rounded-md font-medium mb-3">{loadError}</p>}
+      {message && <p className="text-red-100 bg-red-950/80 px-3 py-2 rounded-md font-medium mb-3">{message}</p>}
 
       {overview.myTeam && (
         <div className="grid grid-cols-3 gap-3 w-full max-w-lg mb-4">

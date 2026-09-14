@@ -8,7 +8,7 @@ export function Panel({ children, className = "" }: { children: React.ReactNode;
 
 export function PanelTitle({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex items-center gap-2 text-[#A43737] font-bold text-xl md:text-2xl mb-4 tracking-wide drop-shadow-[0_0_1px_#FFD700]">
+    <div className="minecraft-font flex items-center gap-2 text-[#FDE047] font-bold text-xl md:text-2xl mb-4 tracking-wide text-outline-brown">
       {children}
     </div>
   );

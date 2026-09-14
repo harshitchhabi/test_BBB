@@ -129,7 +129,7 @@ export default function TradeBuildPage({ params }: { params: Promise<{ eventId: 
     }
   }
 
-  if (loadError && !overview) return <PageFrame><p className="text-red-300 text-center mt-8">{loadError}</p></PageFrame>;
+  if (loadError && !overview) return <PageFrame><p className="text-red-100 bg-red-950/80 px-3 py-2 rounded-md font-medium text-center mt-8">{loadError}</p></PageFrame>;
   if (!overview) return <PageFrame><p className="text-[#F1EBB5]">Loading…</p></PageFrame>;
   if (!overview.myTeam) {
     return (
@@ -150,8 +150,8 @@ export default function TradeBuildPage({ params }: { params: Promise<{ eventId: 
     <PageFrame>
       <TeamNav eventId={eventId} />
       <HeaderBanner>TRADE & BUILD</HeaderBanner>
-      {loadError && <p className="text-red-300 mb-3">{loadError}</p>}
-      {message && <p className="text-red-300 mb-3">{message}</p>}
+      {loadError && <p className="text-red-100 bg-red-950/80 px-3 py-2 rounded-md font-medium mb-3">{loadError}</p>}
+      {message && <p className="text-red-100 bg-red-950/80 px-3 py-2 rounded-md font-medium mb-3">{message}</p>}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full">
         <Panel>
@@ -260,7 +260,7 @@ export default function TradeBuildPage({ params }: { params: Promise<{ eventId: 
                   </div>
                   <ul className="text-xs mt-1">
                     {r.requirements.map((req: any) => (
-                      <li key={req.materialTypeId} className={(quantityByMaterial.get(req.materialTypeId) ?? 0) < req.requiredQuantity ? "text-red-300" : "text-yellow-200"}>
+                      <li key={req.materialTypeId} className={(quantityByMaterial.get(req.materialTypeId) ?? 0) < req.requiredQuantity ? "text-orange-300 font-semibold" : "text-yellow-200"}>
                         {req.materialName}: {quantityByMaterial.get(req.materialTypeId) ?? 0} / {req.requiredQuantity}
                       </li>
                     ))}

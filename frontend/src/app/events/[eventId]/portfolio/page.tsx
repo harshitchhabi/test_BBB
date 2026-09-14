@@ -54,7 +54,7 @@ export default function PortfolioPage({ params }: { params: Promise<{ eventId: s
     if (connected) refresh();
   }, [connected, refresh]);
 
-  if (loadError && !overview) return <PageFrame><p className="text-red-300 text-center mt-8">{loadError}</p></PageFrame>;
+  if (loadError && !overview) return <PageFrame><p className="text-red-100 bg-red-950/80 px-3 py-2 rounded-md font-medium text-center mt-8">{loadError}</p></PageFrame>;
   if (!overview) return <PageFrame><p className="text-[#F1EBB5]">Loading…</p></PageFrame>;
   if (!overview.myTeam) {
     return (
@@ -69,7 +69,7 @@ export default function PortfolioPage({ params }: { params: Promise<{ eventId: s
     <PageFrame>
       <TeamNav eventId={eventId} />
       <HeaderBanner image="/assets/images/cart_page/header.png">PORTFOLIO & SCORE</HeaderBanner>
-      {loadError && <p className="text-red-300 mb-3">{loadError}</p>}
+      {loadError && <p className="text-red-100 bg-red-950/80 px-3 py-2 rounded-md font-medium mb-3">{loadError}</p>}
 
       <Panel className="w-full max-w-2xl mb-6">
         <PanelTitle>APPROVED BUILDINGS</PanelTitle>

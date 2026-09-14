@@ -147,7 +147,7 @@ function HomeContent() {
             >
               {loggingIn ? "Signing in…" : "Sign In →"}
             </button>
-            {loginError && <p className="text-red-300 text-sm">{loginError}</p>}
+            {loginError && <p className="text-red-100 bg-red-950/80 px-3 py-2 rounded-md font-medium text-sm">{loginError}</p>}
             <p className="text-white/70 text-xs">Your moderator issues your team's username and password.</p>
           </form>
         )}
@@ -162,7 +162,7 @@ function HomeContent() {
         )}
         {status === "authenticated" && !eventId && !notFound && <p className="text-white">Loading event…</p>}
         {notFound && (
-          <p className="bg-black/50 text-red-300 px-4 py-3 rounded max-w-md">
+          <p className="bg-black/50 text-red-100 font-medium px-4 py-3 rounded max-w-md">
             No event has been set up on this server yet. Ask your moderator to create one.
           </p>
         )}

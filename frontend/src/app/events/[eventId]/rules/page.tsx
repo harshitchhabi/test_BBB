@@ -34,7 +34,7 @@ export default function RulesPage({ params }: { params: Promise<{ eventId: strin
     }
   }, [eventId, status]);
 
-  if (loadError && !overview) return <PageFrame><p className="text-red-300 text-center mt-8">{loadError}</p></PageFrame>;
+  if (loadError && !overview) return <PageFrame><p className="text-red-100 bg-red-950/80 px-3 py-2 rounded-md font-medium text-center mt-8">{loadError}</p></PageFrame>;
   if (!overview) return <PageFrame><p className="text-[#F1EBB5]">Loading…</p></PageFrame>;
   const s = overview.settings;
 

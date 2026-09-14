@@ -60,29 +60,26 @@ describe("Event stage control (setEventStatus)", () => {
     expect(round.status).toBe("active");
   });
 
-  it("requires a reason to pause, and rejects a non-staff actor", async () => {
+  it("doesn't require a reason to pause/resume, but still logs a clear placeholder when one isn't given, and rejects a non-staff actor", async () => {
     const [event] = await dbModule.db.insert(schema.events).values({ name: "Pause Test", status: "lobby" }).returning();
     const [moderator] = await dbModule.db.insert(schema.participants).values({ name: "Mod", email: `mod2-${event.id}@test.local`, username: `mod2-${event.id}`, passwordHash: "$2a$10$CwTycUXWue0Thq9StjUM0uJ8oxL/Yjyq6XvXqAtVvjGdiWZOWXQNi" }).returning();
     await dbModule.db.insert(schema.eventStaff).values({ eventId: event.id, participantId: moderator.id, role: "staff" });
     const [randomPerson] = await dbModule.db.insert(schema.participants).values({ name: "Random", email: `random-${event.id}@test.local`, username: `random-${event.id}`, passwordHash: "$2a$10$CwTycUXWue0Thq9StjUM0uJ8oxL/Yjyq6XvXqAtVvjGdiWZOWXQNi" }).returning();
 
     await expect(
-      engine.setEventStatus({ eventId: event.id, status: "paused", actorParticipantId: moderator.id }),
-    ).rejects.toMatchObject({ code: "conflict" });
-
-    await expect(
       engine.setEventStatus({ eventId: event.id, status: "paused", actorParticipantId: randomPerson.id, reason: "test" }),
     ).rejects.toMatchObject({ code: "forbidden" });
 
-    const paused = await engine.setEventStatus({ eventId: event.id, status: "paused", actorParticipantId: moderator.id, reason: "Fire alarm." });
+    const paused = await engine.setEventStatus({ eventId: event.id, status: "paused", actorParticipantId: moderator.id });
     expect(paused.status).toBe("paused");
+    const [pauseEntry] = await dbModule.db
+      .select()
+      .from(schema.auditLog)
+      .where(dbModule.and(dbModule.eq(schema.auditLog.eventId, event.id), dbModule.eq(schema.auditLog.action, "event.stage_changed")))
+      .orderBy(dbModule.desc(schema.auditLog.createdAt));
+    expect(pauseEntry.reason).toBe("No reason given");
 
-    // Resuming FROM paused is an override too (isOverride checks either
-    // side of the transition), so it also requires a reason.
-    await expect(
-      engine.setEventStatus({ eventId: event.id, status: "lobby", actorParticipantId: moderator.id }),
-    ).rejects.toMatchObject({ code: "conflict" });
-
+    // Resuming FROM paused works the same way, reason still optional.
     const resumed = await engine.setEventStatus({ eventId: event.id, status: "lobby", actorParticipantId: moderator.id, reason: "All clear." });
     expect(resumed.status).toBe("lobby");
   });
@@ -120,7 +117,7 @@ describe("Event stage control (setEventStatus)", () => {
 });
 
 describe("forceEventStage (Task 3: admin stage override)", () => {
-  it("jumps straight to any stage, voiding a live lot along the way, and requires a reason", async () => {
+  it("jumps straight to any stage, voiding a live lot along the way, with a reason still optional", async () => {
     const [event] = await dbModule.db.insert(schema.events).values({ name: "Force Stage Test", status: "stage_1" }).returning();
     await dbModule.db.insert(schema.eventSettings).values({ eventId: event.id });
     const [moderator] = await dbModule.db
@@ -149,13 +146,11 @@ describe("forceEventStage (Task 3: admin stage override)", () => {
     const { bid } = await engine.placeBid({ eventId: event.id, auctionLotId: lot.id, teamId: team.id, actingParticipantId: leader.id, amount: 150 });
     expect(bid.status).toBe("winning");
 
-    // Non-staff is refused, and a reason is always required.
+    // Non-staff is refused; a blank reason is fine (logged with a
+    // placeholder rather than blocking the override).
     await expect(
       engine.forceEventStage({ eventId: event.id, status: "stage_3", actorParticipantId: randomPerson.id, reason: "x" }),
     ).rejects.toMatchObject({ code: "forbidden" });
-    await expect(
-      engine.forceEventStage({ eventId: event.id, status: "stage_3", actorParticipantId: moderator.id, reason: "" }),
-    ).rejects.toMatchObject({ code: "conflict" });
     await expect(
       engine.forceEventStage({ eventId: event.id, status: "not_a_real_stage", actorParticipantId: moderator.id, reason: "test" }),
     ).rejects.toMatchObject({ code: "invalid_input" });

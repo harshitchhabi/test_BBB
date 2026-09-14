@@ -263,15 +263,15 @@ describe("deleteStaffLogin", () => {
     ).rejects.toMatchObject({ code: "conflict" });
   });
 
-  it("requires staff status and a reason", async () => {
+  it("requires staff status, but no longer requires a typed reason", async () => {
     const { event, moderator, teamA } = await createTestFixture(dbModule.db);
     const second = await engine.createStaffLogin({ eventId: event.id, actorParticipantId: moderator.id, name: "Second Mod", username: `second2-${event.id.slice(0, 8)}` });
 
     await expect(
       engine.deleteStaffLogin({ eventId: event.id, actorParticipantId: teamA.member.id, participantId: second.staffRow.participantId, reason: "x" }),
     ).rejects.toMatchObject({ code: "forbidden" });
-    await expect(
-      engine.deleteStaffLogin({ eventId: event.id, actorParticipantId: moderator.id, participantId: second.staffRow.participantId, reason: "" }),
-    ).rejects.toMatchObject({ code: "conflict" });
+
+    const removed = await engine.deleteStaffLogin({ eventId: event.id, actorParticipantId: moderator.id, participantId: second.staffRow.participantId, reason: "" });
+    expect(removed.participantId).toBe(second.staffRow.participantId);
   });
 });

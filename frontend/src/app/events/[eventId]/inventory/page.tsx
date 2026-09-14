@@ -44,14 +44,14 @@ export default function InventoryPage({ params }: { params: Promise<{ eventId: s
     if (connected) refresh();
   }, [connected, refresh]);
 
-  if (loadError && !overview) return <PageFrame><p className="text-red-300 text-center mt-8">{loadError}</p></PageFrame>;
+  if (loadError && !overview) return <PageFrame><p className="text-red-100 bg-red-950/80 px-3 py-2 rounded-md font-medium text-center mt-8">{loadError}</p></PageFrame>;
   if (!overview) return <PageFrame><p className="text-[#F1EBB5]">Loading…</p></PageFrame>;
 
   return (
     <PageFrame>
       <TeamNav eventId={eventId} />
       <HeaderBanner image="/assets/images/cart_page/header.png">MY INVENTORY</HeaderBanner>
-      {loadError && <p className="text-red-300 mb-3">{loadError}</p>}
+      {loadError && <p className="text-red-100 bg-red-950/80 px-3 py-2 rounded-md font-medium mb-3">{loadError}</p>}
 
       {!overview.myTeam ? (
         <p className="text-[#F1EBB5]">Join a team first.</p>

@@ -55,8 +55,8 @@ export default function ModeratorTradesPage({ params }: { params: Promise<{ even
     <PageFrame>
       <ModNav eventId={eventId} />
       <HeaderBanner>TRADE DESK</HeaderBanner>
-      {loadError && <p className="text-red-300 mb-3">{loadError}</p>}
-      {message && <p className="text-red-300 mb-3">{message}</p>}
+      {loadError && <p className="text-red-100 bg-red-950/80 px-3 py-2 rounded-md font-medium mb-3">{loadError}</p>}
+      {message && <p className="text-red-100 bg-red-950/80 px-3 py-2 rounded-md font-medium mb-3">{message}</p>}
 
       <Panel className="w-full">
         {trades.length === 0 && <p className="text-white/70 text-center py-4">No trades proposed yet.</p>}

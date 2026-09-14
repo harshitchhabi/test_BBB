@@ -78,13 +78,20 @@ describe("deleteTeam", () => {
     expect(releasedOwner.sessionId).toBeNull();
   });
 
-  it("requires a reason and staff status", async () => {
+  it("requires staff status, but no longer requires a typed reason", async () => {
     const { event, moderator, teamA } = await createTestFixture(dbModule.db);
     await expect(
       engine.deleteTeam({ eventId: event.id, teamId: teamA.team.id, actorParticipantId: teamA.member.id, reason: "x" }),
     ).rejects.toMatchObject({ code: "forbidden" });
-    await expect(
-      engine.deleteTeam({ eventId: event.id, teamId: teamA.team.id, actorParticipantId: moderator.id, reason: "" }),
-    ).rejects.toMatchObject({ code: "conflict" });
+
+    // A blank reason no longer blocks the action - it still gets logged,
+    // just with a clear placeholder instead of forcing a moderator to
+    // type something before the button works.
+    await engine.deleteTeam({ eventId: event.id, teamId: teamA.team.id, actorParticipantId: moderator.id, reason: "" });
+    const [entry] = await dbModule.db
+      .select()
+      .from(schema.auditLog)
+      .where(dbModule.and(dbModule.eq(schema.auditLog.eventId, event.id), dbModule.eq(schema.auditLog.action, "team.deleted")));
+    expect(entry.reason).toBe("No reason given");
   });
 });

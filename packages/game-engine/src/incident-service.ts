@@ -50,7 +50,7 @@ export async function setTeamStatus(params: {
   teamId: string;
   status: "active" | "withdrawn" | "disqualified";
   actorParticipantId: string;
-  reason: string;
+  reason?: string;
 }) {
   return runInTransaction(async (tx, queueBroadcast) => {
     await assertStaffTx(tx, params.eventId, params.actorParticipantId);
@@ -98,7 +98,7 @@ export async function adjustTeamTokens(params: {
   auctionTokensDelta?: number;
   cityWalletTokensDelta?: number;
   actorParticipantId: string;
-  reason: string;
+  reason?: string;
 }) {
   return runInTransaction(async (tx, queueBroadcast) => {
     await assertStaffTx(tx, params.eventId, params.actorParticipantId);
@@ -148,7 +148,7 @@ export async function adjustTeamTokens(params: {
 // silently resurrecting an old bid is a bigger judgment call than this
 // function should make on its own; the moderator re-solicits bids or
 // reopens the lot instead.
-export async function voidBid(params: { eventId: string; bidId: string; actorParticipantId: string; reason: string }) {
+export async function voidBid(params: { eventId: string; bidId: string; actorParticipantId: string; reason?: string }) {
   return runInTransaction(async (tx, queueBroadcast) => {
     await assertStaffTx(tx, params.eventId, params.actorParticipantId);
 
@@ -187,7 +187,7 @@ export async function voidBid(params: { eventId: string; bidId: string; actorPar
 // is reversed via an equal-and-opposite ledger entry (never edited/deleted
 // — the original grant and its reversal both stay in the ledger, honest
 // and traceable), and the material lot goes back up for auction.
-export async function reopenLot(params: { eventId: string; auctionLotId: string; actorParticipantId: string; reason: string }) {
+export async function reopenLot(params: { eventId: string; auctionLotId: string; actorParticipantId: string; reason?: string }) {
   return runInTransaction(async (tx, queueBroadcast) => {
     await assertStaffTx(tx, params.eventId, params.actorParticipantId);
 
@@ -287,10 +287,9 @@ export async function reopenLot(params: { eventId: string; auctionLotId: string;
 // cleared rather than deleting the shared record itself — the lot/city/
 // auction stays on the books, it just no longer claims this now-deleted
 // team won it.
-export async function deleteTeam(params: { eventId: string; teamId: string; actorParticipantId: string; reason: string }) {
+export async function deleteTeam(params: { eventId: string; teamId: string; actorParticipantId: string; reason?: string }) {
   return runInTransaction(async (tx, queueBroadcast) => {
     await assertStaffTx(tx, params.eventId, params.actorParticipantId);
-    if (!params.reason) throw new GameError("conflict", "A reason is required to delete a team.");
 
     const [team] = await tx.select().from(teams).where(eq(teams.id, params.teamId)).for("update");
     if (!team || team.eventId !== params.eventId) throw new GameError("not_found", "Team not found.");

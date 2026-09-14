@@ -16,7 +16,7 @@ export function HeaderBanner({
       className="w-[95%] md:w-[90%] p-6 md:p-8 mb-6 flex justify-center items-center rounded-lg"
       style={{ backgroundImage: `url('${image}')`, backgroundSize: "cover", backgroundRepeat: "no-repeat" }}
     >
-      <h1 className="text-2xl md:text-3xl text-[#F1EBB5] font-bold tracking-widest text-outline-brown text-center">
+      <h1 className="minecraft-font text-2xl md:text-3xl text-[#F1EBB5] font-bold tracking-widest text-outline-brown text-center">
         {children}
       </h1>
     </div>

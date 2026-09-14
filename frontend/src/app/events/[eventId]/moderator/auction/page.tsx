@@ -8,6 +8,7 @@ import { ModNav } from "../mod-nav";
 import { PageFrame } from "@/components/theme/PageFrame";
 import { HeaderBanner } from "@/components/theme/HeaderBanner";
 import { Panel, PanelTitle, WoodButton } from "@/components/theme/Panel";
+import { ConfirmDialog, type ConfirmDialogState } from "@/components/theme/ConfirmDialog";
 
 // Section 7.8/7.9 moderator console — Stage 1 Auction Control slice.
 // Every button here calls the same command endpoints a script or a
@@ -22,6 +23,7 @@ export default function ModeratorAuctionPage({ params }: { params: Promise<{ eve
   const [materialTypeId, setMaterialTypeId] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [confirmState, setConfirmState] = useState<ConfirmDialogState | null>(null);
 
   const refresh = useCallback(async () => {
     const res = await fetch(`/api/events/${eventId}/auction-state`);
@@ -80,19 +82,27 @@ export default function ModeratorAuctionPage({ params }: { params: Promise<{ eve
   //   tokens/materials changed but the bid marked voided, an
   //   inconsistent state.
   function voidCurrentHighestBid(bidId: string, lotNumber: number) {
-    const reason = window.prompt(`Void the current highest bid on lot #${lotNumber}? The next-highest bid (if any) becomes winning. Enter a reason to confirm, or cancel:`);
-    if (!reason) return;
-    call(`/api/events/${eventId}/bids/${bidId}/void`, { reason });
+    setConfirmState({
+      title: "Void current highest bid",
+      message: `Void the current highest bid on lot #${lotNumber}? The next-highest bid (if any) becomes winning.`,
+      confirmLabel: "Void bid",
+      danger: true,
+      onConfirm: (reason) => call(`/api/events/${eventId}/bids/${bidId}/void`, { reason }),
+    });
   }
 
   function reopenLot(lotId: string, lotNumber: number) {
-    const reason = window.prompt(`Reopen lot #${lotNumber} for more bidding? Enter a reason to confirm, or cancel:`);
-    if (!reason) return;
-    call(`/api/events/${eventId}/auction-lots/${lotId}/reopen`, { reason });
+    setConfirmState({
+      title: "Reopen lot",
+      message: `Reopen lot #${lotNumber} for more bidding? This properly reverses the sale (refunds the winner's tokens, reverses the material grant) before putting it back up live.`,
+      confirmLabel: "Reopen",
+      danger: true,
+      onConfirm: (reason) => call(`/api/events/${eventId}/auction-lots/${lotId}/reopen`, { reason }),
+    });
   }
 
   if (status !== "authenticated") return <PageFrame><p className="text-[#F1EBB5]">Sign in as a moderator.</p></PageFrame>;
-  if (loadError) return <PageFrame><ModNav eventId={eventId} /><p className="text-red-300 text-center mt-8">{loadError}</p></PageFrame>;
+  if (loadError) return <PageFrame><ModNav eventId={eventId} /><p className="text-red-100 bg-red-950/80 px-3 py-2 rounded-md font-medium text-center mt-8">{loadError}</p></PageFrame>;
   if (!state) return <PageFrame><p className="text-[#F1EBB5]">Loading…</p></PageFrame>;
   if (!state.isStaff) return <PageFrame><ModNav eventId={eventId} /><p className="text-[#F1EBB5]">You are not staff for this event.</p></PageFrame>;
 
@@ -100,7 +110,7 @@ export default function ModeratorAuctionPage({ params }: { params: Promise<{ eve
     <PageFrame>
       <ModNav eventId={eventId} />
       <HeaderBanner>STAGE 1 AUCTION CONTROL</HeaderBanner>
-      {message && <p className="text-red-300 mb-3">{message}</p>}
+      {message && <p className="text-red-100 bg-red-950/80 px-3 py-2 rounded-md font-medium mb-3">{message}</p>}
 
       <Panel className="w-full max-w-2xl mb-4">
         <PanelTitle>START A ROUND</PanelTitle>
@@ -188,6 +198,7 @@ export default function ModeratorAuctionPage({ params }: { params: Promise<{ eve
           ))}
         </div>
       </Panel>
+      <ConfirmDialog state={confirmState} onClose={() => setConfirmState(null)} />
     </PageFrame>
   );
 }

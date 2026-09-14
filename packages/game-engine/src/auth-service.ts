@@ -71,7 +71,7 @@ function randomSessionId(): string {
 // atomically. The password is generated here, returned once in plaintext
 // for the admin screen to display, and never stored or logged anywhere
 // except as its bcrypt hash.
-export async function createLoginTx(tx: Tx, params: { name: string; username: string }) {
+export async function createLoginTx(tx: Tx, params: { name: string; username: string; password?: string }) {
   const username = normalizeUsername(params.username);
   if (!/^[a-z0-9._-]{3,32}$/.test(username)) {
     throw new GameError("invalid_input", "Username must be 3-32 characters: letters, numbers, dots, dashes, or underscores.");
@@ -80,7 +80,15 @@ export async function createLoginTx(tx: Tx, params: { name: string; username: st
   const [existing] = await tx.select({ id: participants.id }).from(participants).where(eq(participants.username, username));
   if (existing) throw new GameError("conflict", `The username "${username}" is already taken.`);
 
-  const password = generatePassword();
+  // An admin can choose the login's password instead of always getting a
+  // random one - useful when the team already has a password convention,
+  // or the admin just wants something easier to read out loud. Still
+  // enforces a sane minimum so "team1"/"a" doesn't become a real
+  // credential.
+  if (params.password !== undefined && params.password.length < 6) {
+    throw new GameError("invalid_input", "Password must be at least 6 characters.");
+  }
+  const password = params.password ?? generatePassword();
   const passwordHash = await hashPassword(password);
   const [participant] = await tx
     .insert(participants)
