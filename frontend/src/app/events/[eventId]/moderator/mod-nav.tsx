@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEventOverview } from "@/lib/use-event-overview";
 
 // Section 7.8 moderator console navigation, same wood/gold theme as the
 // team portal's nav. Score & Reveal lives inside the Cities screen
@@ -31,14 +31,8 @@ const STAGE_RELEVANCE: Record<string, string[]> = {
 
 export function ModNav({ eventId }: { eventId: string }) {
   const pathname = usePathname();
-  const [eventStatus, setEventStatus] = useState<string | null>(null);
-
-  useEffect(() => {
-    fetch(`/api/events/${eventId}/overview`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => setEventStatus(d?.event?.status ?? null))
-      .catch(() => {});
-  }, [eventId]);
+  const overview = useEventOverview(eventId);
+  const eventStatus: string | null = overview?.event?.status ?? null;
 
   const alwaysOn = [{ href: `/events/${eventId}/moderator/setup`, label: "Event Setup" }];
   const stageLinks = [

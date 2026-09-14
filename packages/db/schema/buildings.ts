@@ -22,7 +22,7 @@ export const recipeRequirements = pgTable("recipe_requirements", {
     .references(() => buildingRecipes.id, { onDelete: "cascade" }),
   materialTypeId: uuid("material_type_id")
     .notNull()
-    .references(() => materialTypes.id),
+    .references(() => materialTypes.id, { onDelete: "cascade" }),
   requiredQuantity: integer("required_quantity").notNull(),
 });
 

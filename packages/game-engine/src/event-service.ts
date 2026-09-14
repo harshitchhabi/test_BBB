@@ -1,6 +1,7 @@
 import { eq, and } from "db";
 import {
   events,
+  eventSettings,
   teams,
   teamMembers,
   materialLots,
@@ -314,5 +315,102 @@ export async function resetEventForNewRound(params: { eventId: string; actorPart
     queueBroadcast({ eventId: params.eventId, type: "event.stage_changed", data: { status: resetEvent.status, reset: true } });
 
     return resetEvent;
+  });
+}
+
+// Every field the Rules page (frontend's rules/page.tsx) reads out of
+// event_settings, plus the free-text note — the same set is what an
+// admin is actually allowed to change here, so "what the Rules page
+// shows" and "what this can edit" never drift apart. There was
+// previously no way to change these at all outside a direct DB edit.
+const EDITABLE_INTEGER_FIELDS = [
+  "stage1StartingTokens",
+  "cityWalletTokens",
+  "minimumRaiseStandard",
+  "minimumRaiseLowOpening",
+  "lowOpeningThreshold",
+  "cityMinimumRaise",
+  "tradeLimit",
+  "normalBankTaxPercent",
+  "rareBankTaxPercent",
+  "scoutReportCost",
+  "scoutReportLimit",
+  "inspectionCost",
+  "inspectionLimitPerTeam",
+  "auctionLotDurationSeconds",
+  "cityAuctionDurationSeconds",
+  "leftoverUnitsPerPoint",
+  "advancedCityScoringPenalty",
+] as const;
+const EDITABLE_BOOLEAN_FIELDS = [
+  "inspectionsEnabled",
+  "scoutReportsEnabled",
+  "leftoverScoringEnabled",
+  "advancedCityScoringEnabled",
+] as const;
+type EditableIntegerField = (typeof EDITABLE_INTEGER_FIELDS)[number];
+type EditableBooleanField = (typeof EDITABLE_BOOLEAN_FIELDS)[number];
+
+const MAX_RULES_NOTE_LENGTH = 4000;
+
+export async function updateEventSettings(params: {
+  eventId: string;
+  actorParticipantId: string;
+  updates: Partial<Record<EditableIntegerField, number>> & Partial<Record<EditableBooleanField, boolean>> & { customRulesNote?: string | null };
+}) {
+  return runInTransaction(async (tx) => {
+    await assertStaffTx(tx, params.eventId, params.actorParticipantId);
+
+    const [before] = await tx.select().from(eventSettings).where(eq(eventSettings.eventId, params.eventId)).for("update");
+    if (!before) throw new GameError("not_found", "Event settings not found.");
+
+    const patch: Record<string, number | boolean | string | null> = {};
+    for (const field of EDITABLE_INTEGER_FIELDS) {
+      const value = params.updates[field];
+      if (value === undefined) continue;
+      if (!Number.isInteger(value) || value < 0 || value > 1_000_000) {
+        throw new GameError("invalid_input", `${field} must be a whole number between 0 and 1,000,000.`);
+      }
+      patch[field] = value;
+    }
+    for (const field of EDITABLE_BOOLEAN_FIELDS) {
+      const value = params.updates[field];
+      if (value === undefined) continue;
+      if (typeof value !== "boolean") throw new GameError("invalid_input", `${field} must be true or false.`);
+      patch[field] = value;
+    }
+    if (params.updates.customRulesNote !== undefined) {
+      const note = params.updates.customRulesNote;
+      if (note !== null && (typeof note !== "string" || note.length > MAX_RULES_NOTE_LENGTH)) {
+        throw new GameError("invalid_input", `The rules note must be ${MAX_RULES_NOTE_LENGTH} characters or fewer.`);
+      }
+      patch.customRulesNote = note;
+    }
+    if (Object.keys(patch).length === 0) {
+      throw new GameError("invalid_input", "No valid settings fields were provided.");
+    }
+
+    const [updated] = await tx.update(eventSettings).set(patch).where(eq(eventSettings.eventId, params.eventId)).returning();
+
+    await recordAudit(tx, {
+      eventId: params.eventId,
+      actorParticipantId: params.actorParticipantId,
+      isOverride: true,
+      reason: "Event settings updated.",
+      action: "event.settings_updated",
+      entityType: "event_settings",
+      entityId: params.eventId,
+      beforeJson: before,
+      afterJson: updated,
+    });
+
+    // No live broadcast: these are configuration values, not fast-moving
+    // game state, and every page that displays them (the Rules page,
+    // both nav bars via use-event-overview.ts's short-TTL cache) already
+    // re-fetches on its own within a few seconds of navigation - a
+    // moderator announcing "I just updated the rules" in person covers
+    // the same-page-already-open case better than plumbing a new
+    // broadcast type would.
+    return updated;
   });
 }

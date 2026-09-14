@@ -78,6 +78,12 @@ export const eventSettings = pgTable("event_settings", {
   leftoverUnitsPerPoint: integer("leftover_units_per_point").notNull().default(15),
   advancedCityScoringEnabled: boolean("advanced_city_scoring_enabled").notNull().default(false),
   advancedCityScoringPenalty: integer("advanced_city_scoring_penalty").notNull().default(1),
+  // Free-form admin-editable text shown at the top of the Rules page,
+  // for anything not covered by the structured settings above
+  // (house rules, announcements, a reminder about a local variation).
+  // Every other field on this row already drives the Rules page's
+  // generated bullet points; this is the one place for plain prose.
+  customRulesNote: text("custom_rules_note"),
 });
 
 // event_staff: staff assigned to run a specific event (the "moderator"

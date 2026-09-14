@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEventOverview } from "@/lib/use-event-overview";
 
 // Section 7.1 team portal navigation, restyled to the legacy's wood/gold
 // theme instead of a plain browser nav bar. Also the one place every team
@@ -20,16 +20,8 @@ import { usePathname } from "next/navigation";
 // full player nav — staff should only ever see auction control.
 export function TeamNav({ eventId }: { eventId: string }) {
   const pathname = usePathname();
-  const [isStaff, setIsStaff] = useState(false);
-
-  useEffect(() => {
-    fetch(`/api/events/${eventId}/overview`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => {
-        setIsStaff(Boolean(d?.isStaff));
-      })
-      .catch(() => {});
-  }, [eventId]);
+  const overview = useEventOverview(eventId);
+  const isStaff = Boolean(overview?.isStaff);
 
   const teamOnlyLinks = [
     { href: `/events/${eventId}/auction`, label: "Live Auction" },

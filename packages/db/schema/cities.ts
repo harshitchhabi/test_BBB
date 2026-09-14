@@ -35,7 +35,7 @@ export const cityPreferences = pgTable("city_preferences", {
     .references(() => cities.id, { onDelete: "cascade" }),
   buildingRecipeId: uuid("building_recipe_id")
     .notNull()
-    .references(() => buildingRecipes.id),
+    .references(() => buildingRecipes.id, { onDelete: "cascade" }),
 });
 
 export const scoutReports = pgTable("scout_reports", {

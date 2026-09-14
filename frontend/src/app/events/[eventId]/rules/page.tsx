@@ -51,6 +51,10 @@ export default function RulesPage({ params }: { params: Promise<{ eventId: strin
           <strong>{STAGE_LABELS[overview.event.status] ?? overview.event.status}</strong>
         </p>
 
+        {s.customRulesNote && (
+          <div className="mb-4 p-3 bg-yellow-900/40 border border-yellow-700 rounded whitespace-pre-wrap">{s.customRulesNote}</div>
+        )}
+
         <h2 className="text-yellow-300 font-bold text-lg mb-2">Stage 1: Material Auction</h2>
         <ul className="list-disc list-inside mb-4">
           <li>Starting tokens: {s.stage1StartingTokens}</li>

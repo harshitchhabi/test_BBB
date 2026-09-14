@@ -193,3 +193,35 @@ describe("forceEventStage (Task 3: admin stage override)", () => {
     ).rejects.toMatchObject({ code: "conflict" });
   });
 });
+
+describe("updateEventSettings", () => {
+  it("updates numeric, boolean, and the custom rules note fields, and rejects a non-staff actor", async () => {
+    const [event] = await dbModule.db.insert(schema.events).values({ name: "Settings Test" }).returning();
+    await dbModule.db.insert(schema.eventSettings).values({ eventId: event.id });
+    const [moderator] = await dbModule.db.insert(schema.participants).values({ name: "Mod", email: `mod-${event.id}@test.local`, username: `mod-${event.id}`, passwordHash: "$2a$10$CwTycUXWue0Thq9StjUM0uJ8oxL/Yjyq6XvXqAtVvjGdiWZOWXQNi" }).returning();
+    await dbModule.db.insert(schema.eventStaff).values({ eventId: event.id, participantId: moderator.id, role: "staff" });
+    const [randomPerson] = await dbModule.db.insert(schema.participants).values({ name: "Random", email: `random-${event.id}@test.local`, username: `random-${event.id}`, passwordHash: "$2a$10$CwTycUXWue0Thq9StjUM0uJ8oxL/Yjyq6XvXqAtVvjGdiWZOWXQNi" }).returning();
+
+    await expect(
+      engine.updateEventSettings({ eventId: event.id, actorParticipantId: randomPerson.id, updates: { tradeLimit: 6 } }),
+    ).rejects.toMatchObject({ code: "forbidden" });
+
+    const updated = await engine.updateEventSettings({
+      eventId: event.id,
+      actorParticipantId: moderator.id,
+      updates: { tradeLimit: 6, inspectionsEnabled: true, customRulesNote: "No trading Solar during the last 5 minutes." },
+    });
+    expect(updated.tradeLimit).toBe(6);
+    expect(updated.inspectionsEnabled).toBe(true);
+    expect(updated.customRulesNote).toBe("No trading Solar during the last 5 minutes.");
+    // Untouched fields keep their defaults - a partial update, not a
+    // full-row replace that would zero out everything else.
+    expect(updated.stage1StartingTokens).toBe(1000);
+
+    // Rejects an out-of-range / wrong-type value instead of silently
+    // coercing it or writing garbage.
+    await expect(
+      engine.updateEventSettings({ eventId: event.id, actorParticipantId: moderator.id, updates: { tradeLimit: -1 } }),
+    ).rejects.toMatchObject({ code: "invalid_input" });
+  });
+});

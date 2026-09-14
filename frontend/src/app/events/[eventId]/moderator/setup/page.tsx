@@ -54,6 +54,16 @@ export default function ModeratorSetupPage({ params }: { params: Promise<{ event
   const [forceBusy, setForceBusy] = useState(false);
   const [forceMessage, setForceMessage] = useState<string | null>(null);
 
+  // The Rules page (frontend/src/app/events/[eventId]/rules/page.tsx)
+  // reads every one of these straight off event_settings - this form
+  // edits the exact same row. Starts empty; seeded from `overview` once
+  // it loads (below), so edits always begin from the real current
+  // values instead of the field defaults.
+  const [settingsForm, setSettingsForm] = useState<Record<string, string | boolean>>({});
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
+  const [settingsBusy, setSettingsBusy] = useState(false);
+  const [settingsMessage, setSettingsMessage] = useState<string | null>(null);
+
   const refresh = useCallback(async () => {
     const res = await fetch(`/api/events/${eventId}/overview`);
     if (res.ok) setOverview(await res.json());
@@ -76,6 +86,94 @@ export default function ModeratorSetupPage({ params }: { params: Promise<{ event
       refreshStaffList();
     }
   }, [sessionStatus, refresh, refreshStaffList]);
+
+  useEffect(() => {
+    if (overview?.settings && !settingsLoaded) {
+      const s = overview.settings;
+      setSettingsForm({
+        stage1StartingTokens: String(s.stage1StartingTokens),
+        cityWalletTokens: String(s.cityWalletTokens),
+        minimumRaiseStandard: String(s.minimumRaiseStandard),
+        minimumRaiseLowOpening: String(s.minimumRaiseLowOpening),
+        lowOpeningThreshold: String(s.lowOpeningThreshold),
+        cityMinimumRaise: String(s.cityMinimumRaise),
+        tradeLimit: String(s.tradeLimit),
+        normalBankTaxPercent: String(s.normalBankTaxPercent),
+        rareBankTaxPercent: String(s.rareBankTaxPercent),
+        scoutReportCost: String(s.scoutReportCost),
+        scoutReportLimit: String(s.scoutReportLimit),
+        inspectionCost: String(s.inspectionCost),
+        inspectionLimitPerTeam: String(s.inspectionLimitPerTeam),
+        auctionLotDurationSeconds: String(s.auctionLotDurationSeconds),
+        cityAuctionDurationSeconds: String(s.cityAuctionDurationSeconds),
+        leftoverUnitsPerPoint: String(s.leftoverUnitsPerPoint),
+        advancedCityScoringPenalty: String(s.advancedCityScoringPenalty),
+        inspectionsEnabled: Boolean(s.inspectionsEnabled),
+        scoutReportsEnabled: Boolean(s.scoutReportsEnabled),
+        leftoverScoringEnabled: Boolean(s.leftoverScoringEnabled),
+        advancedCityScoringEnabled: Boolean(s.advancedCityScoringEnabled),
+        customRulesNote: s.customRulesNote ?? "",
+      });
+      setSettingsLoaded(true);
+    }
+  }, [overview, settingsLoaded]);
+
+  const INTEGER_SETTINGS_FIELDS: Array<[string, string]> = [
+    ["stage1StartingTokens", "Stage 1 starting tokens"],
+    ["cityWalletTokens", "City wallet tokens"],
+    ["minimumRaiseStandard", "Minimum raise (standard)"],
+    ["minimumRaiseLowOpening", "Minimum raise (low opening)"],
+    ["lowOpeningThreshold", "Low opening threshold"],
+    ["cityMinimumRaise", "City minimum raise"],
+    ["tradeLimit", "Trade limit per team"],
+    ["normalBankTaxPercent", "Bank tax % (normal)"],
+    ["rareBankTaxPercent", "Bank tax % (rare)"],
+    ["scoutReportCost", "Scout report cost"],
+    ["scoutReportLimit", "Scout report limit per team"],
+    ["inspectionCost", "Inspection cost"],
+    ["inspectionLimitPerTeam", "Inspection limit per team"],
+    ["auctionLotDurationSeconds", "Auction lot duration (sec)"],
+    ["cityAuctionDurationSeconds", "City auction duration (sec)"],
+    ["leftoverUnitsPerPoint", "Leftover units per point"],
+    ["advancedCityScoringPenalty", "Advanced scoring penalty"],
+  ];
+  const BOOLEAN_SETTINGS_FIELDS: Array<[string, string]> = [
+    ["inspectionsEnabled", "Inspections enabled"],
+    ["scoutReportsEnabled", "Scout reports enabled"],
+    ["leftoverScoringEnabled", "Leftover scoring enabled"],
+    ["advancedCityScoringEnabled", "Advanced city scoring enabled"],
+  ];
+
+  async function saveSettings() {
+    if (settingsBusy) return;
+    setSettingsBusy(true);
+    setSettingsMessage(null);
+    try {
+      const updates: Record<string, number | boolean | string> = {};
+      for (const [key] of INTEGER_SETTINGS_FIELDS) {
+        const raw = settingsForm[key];
+        if (typeof raw === "string" && raw.trim() !== "") updates[key] = Number(raw);
+      }
+      for (const [key] of BOOLEAN_SETTINGS_FIELDS) {
+        updates[key] = Boolean(settingsForm[key]);
+      }
+      updates.customRulesNote = typeof settingsForm.customRulesNote === "string" ? settingsForm.customRulesNote : "";
+
+      const res = await fetch(`/api/events/${eventId}/settings`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(updates),
+      });
+      const body = await res.json();
+      if (!res.ok) setSettingsMessage(body.message);
+      else {
+        setSettingsMessage("Saved.");
+        refresh();
+      }
+    } finally {
+      setSettingsBusy(false);
+    }
+  }
 
   // Frees the username for reuse without touching this login's history —
   // see team-service.ts's deleteStaffLogin. Refuses to remove the last
@@ -350,6 +448,62 @@ export default function ModeratorSetupPage({ params }: { params: Promise<{ event
               </li>
             ))}
           </ul>
+        )}
+      </Panel>
+
+      <Panel className="w-full max-w-lg mt-4">
+        <PanelTitle>RULES &amp; SETTINGS</PanelTitle>
+        <p className="text-white/70 text-sm mb-3">
+          Everything below is exactly what the Rules page shows every team. The note is free text — announcements,
+          house rules, anything the structured numbers below don&apos;t cover.
+        </p>
+        {!settingsLoaded ? (
+          <p className="text-white/70">Loading…</p>
+        ) : (
+          <>
+            <label className="block text-yellow-300 text-sm font-bold mb-1">Custom rules note</label>
+            <textarea
+              value={typeof settingsForm.customRulesNote === "string" ? settingsForm.customRulesNote : ""}
+              onChange={(e) => setSettingsForm((f) => ({ ...f, customRulesNote: e.target.value }))}
+              placeholder="Shown at the top of the Rules page for every team."
+              rows={4}
+              maxLength={4000}
+              className="w-full px-3 py-2 rounded text-black mb-4"
+            />
+
+            <div className="grid grid-cols-2 gap-2 mb-4">
+              {INTEGER_SETTINGS_FIELDS.map(([key, label]) => (
+                <label key={key} className="text-white/90 text-xs">
+                  {label}
+                  <input
+                    type="number"
+                    value={typeof settingsForm[key] === "string" ? (settingsForm[key] as string) : ""}
+                    onChange={(e) => setSettingsForm((f) => ({ ...f, [key]: e.target.value }))}
+                    className="w-full px-2 py-1 rounded text-black mt-0.5"
+                  />
+                </label>
+              ))}
+            </div>
+
+            <div className="flex flex-col gap-1 mb-4">
+              {BOOLEAN_SETTINGS_FIELDS.map(([key, label]) => (
+                <label key={key} className="flex items-center gap-2 text-white/90 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(settingsForm[key])}
+                    onChange={(e) => setSettingsForm((f) => ({ ...f, [key]: e.target.checked }))}
+                    className="w-4 h-4 accent-yellow-500"
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
+
+            <WoodButton variant="primary" disabled={settingsBusy} onClick={saveSettings}>
+              {settingsBusy ? "Saving…" : "Save rules & settings"}
+            </WoodButton>
+            {settingsMessage && <p className="text-yellow-300 mt-3">{settingsMessage}</p>}
+          </>
         )}
       </Panel>
 
