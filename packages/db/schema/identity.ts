@@ -121,6 +121,15 @@ export const teams = pgTable(
     tradeCount: integer("trade_count").notNull().default(0),
     scoutReportCount: integer("scout_report_count").notNull().default(0),
     inspectionCount: integer("inspection_count").notNull().default(0),
+    // Credited by closeLot whenever this team wins a lot in a round
+    // where the "Eco Incentive" Market Shock was active for that round's
+    // material (auction_rounds.eco_bonus_override set) — how many units
+    // of genuinely free-this-round Solar this team has banked toward the
+    // +15-instead-of-+10 Eco construction bonus. Spent (capped by
+    // current holdings, so trading the physical Solar away can't be used
+    // to bank the credit and cash it in on different Solar later) by
+    // constructBuilding's eco-bonus branch in building-service.ts.
+    ecoEligibleSolarUnits: integer("eco_eligible_solar_units").notNull().default(0),
     status: teamStatusEnum("status").notNull().default("active"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },

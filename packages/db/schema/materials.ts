@@ -32,6 +32,16 @@ export const materialTypes = pgTable("material_types", {
   sortOrder: integer("sort_order").notNull().default(0),
   defaultLotQuantity: integer("default_lot_quantity").notNull(),
   defaultOpeningBid: integer("default_opening_bid").notNull(),
+  // Set by the "Supply Crunch" Market Shock (applyGlobalEffect's
+  // smallest_unsold_lot_price_increase in market-shock-service.ts) on
+  // whichever material it identifies as the target — the percent
+  // increase its own next round's opening bid should get. startRound
+  // reads and clears this the next time a round actually starts for
+  // this exact material, applying it automatically instead of leaving
+  // it as a note for the moderator to apply by hand via
+  // openingBidOverride. NULL when no Supply Crunch adjustment is
+  // pending for this material.
+  pendingOpeningBidIncreasePercent: integer("pending_opening_bid_increase_percent"),
 });
 
 export const materialLots = pgTable("material_lots", {

@@ -111,12 +111,50 @@ export async function startRound(params: {
 
     const sequence = (nextSequence?.maxSequence ?? 0) + 1;
 
+    const [settings] = await tx.select().from(eventSettings).where(eq(eventSettings.eventId, params.eventId));
+    if (!settings) throw new GameError("not_found", "Event settings not found.");
+
+    let openingBid = params.openingBidOverride ?? material.defaultOpeningBid;
+    let perLotOpeningBidOverrides = new Map<number, number>();
+    let ecoBonusOverride: number | null = null;
+    const shockNotes: string[] = [];
+
+    // Automated Supply Crunch follow-through: a PREVIOUS round's Supply
+    // Crunch shock may have flagged this exact material for an
+    // opening-bid increase the next time it comes up for auction (see
+    // market-shock-service.ts's applyGlobalEffect) — applied and cleared
+    // here instead of left as a note for the moderator to apply by hand.
+    // A manual openingBidOverride still takes full precedence over this,
+    // same as it always has over any drawn shock's effect below.
+    if (!params.openingBidOverride && material.pendingOpeningBidIncreasePercent) {
+      const pendingPercent = material.pendingOpeningBidIncreasePercent;
+      openingBid = Math.ceil(openingBid * (1 + pendingPercent / 100));
+      await tx.update(materialTypes).set({ pendingOpeningBidIncreasePercent: null }).where(eq(materialTypes.id, material.id));
+      shockNotes.push(`${material.key} opens ${pendingPercent}% higher this round (automatic Supply Crunch follow-through).`);
+    }
+
     // Rulebook: "At the start of every round after the first, flip one
     // Market Shock card." A card whose effect doesn't concern this round's
     // material still gets revealed (moderator sees it, teams see it) —
     // see market-shock-service.ts's applyMaterialEffect comment for why
     // that's the intended behavior, not a bug.
     const drawnShock = sequence > 1 ? await drawShockCard(tx, params.eventId) : null;
+
+    if (drawnShock && !params.openingBidOverride) {
+      const effect: ShockEffect = JSON.parse(drawnShock.effectJson);
+      // Feeds this round's already-Supply-Crunch-adjusted opening bid in
+      // as the "default" a multiplier-type effect scales from, so the
+      // two stack correctly instead of the drawn card's multiplier
+      // silently discarding the pending increase.
+      const materialResult = applyMaterialEffect(effect, { ...material, defaultOpeningBid: openingBid }, activeTeams.length);
+      openingBid = materialResult.adjustedOpeningBid;
+      perLotOpeningBidOverrides = materialResult.perLotOpeningBidOverrides;
+      ecoBonusOverride = materialResult.ecoBonusOverride;
+      const globalNote = await applyGlobalEffect(tx, params.eventId, effect, params.actorParticipantId);
+      shockNotes.push(globalNote ?? materialResult.note);
+    }
+
+    const shockNote = shockNotes.length > 0 ? shockNotes.join(" ") : null;
 
     const [round] = await tx
       .insert(auctionRounds)
@@ -127,24 +165,9 @@ export async function startRound(params: {
         status: "active",
         marketShockCardId: drawnShock?.cardId,
         startedAt: new Date(),
+        ecoBonusOverride,
       })
       .returning();
-
-    const [settings] = await tx.select().from(eventSettings).where(eq(eventSettings.eventId, params.eventId));
-    if (!settings) throw new GameError("not_found", "Event settings not found.");
-
-    let openingBid = params.openingBidOverride ?? material.defaultOpeningBid;
-    let perLotOpeningBidOverrides = new Map<number, number>();
-    let shockNote: string | null = null;
-
-    if (drawnShock && !params.openingBidOverride) {
-      const effect: ShockEffect = JSON.parse(drawnShock.effectJson);
-      const materialResult = applyMaterialEffect(effect, material, activeTeams.length);
-      openingBid = materialResult.adjustedOpeningBid;
-      perLotOpeningBidOverrides = materialResult.perLotOpeningBidOverrides;
-      const globalNote = await applyGlobalEffect(tx, params.eventId, effect, params.actorParticipantId);
-      shockNote = globalNote ?? materialResult.note;
-    }
 
     const minimumRaise = computeMinimumRaise(openingBid, settings);
 
@@ -464,6 +487,21 @@ export async function closeLot(params: {
       relatedEntityId: lot.id,
       createdBy: params.actorParticipantId,
     });
+
+    // Eco Incentive automation: this round drew the shock and its
+    // material matched (auction_rounds.eco_bonus_override set) — credit
+    // the winner's eco-eligible Solar count so constructBuilding can
+    // automatically grant +15 instead of the standard +10 later, with no
+    // moderator step required. Capped at usage time by current holdings
+    // (building-service.ts), so trading this Solar away can't be used to
+    // bank the credit for different Solar later.
+    const [round] = await tx.select({ ecoBonusOverride: auctionRounds.ecoBonusOverride }).from(auctionRounds).where(eq(auctionRounds.id, lot.roundId));
+    if (round?.ecoBonusOverride) {
+      await tx
+        .update(teams)
+        .set({ ecoEligibleSolarUnits: team.ecoEligibleSolarUnits + materialLot.quantity })
+        .where(eq(teams.id, team.id));
+    }
 
     await tx
       .update(auctionLots)

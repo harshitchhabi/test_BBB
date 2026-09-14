@@ -16,6 +16,13 @@ export const auctionRounds = pgTable("auction_rounds", {
   marketShockCardId: uuid("market_shock_card_id").references(() => marketShockCards.id),
   startedAt: timestamp("started_at", { withTimezone: true }),
   closedAt: timestamp("closed_at", { withTimezone: true }),
+  // Set when this round drew the "Eco Incentive" Market Shock and its
+  // material matches this round's material (material_free_this_round in
+  // market-shock-service.ts) — the +15-instead-of-+10 Eco bonus override
+  // this round's winners are entitled to. NULL for every other round.
+  // closeLot reads this to credit winning teams' eco-eligible Solar
+  // count; constructBuilding reads that count to decide +10 vs +15.
+  ecoBonusOverride: integer("eco_bonus_override"),
 });
 
 export const auctionLots = pgTable("auction_lots", {

@@ -25,13 +25,19 @@ import { assertTeamLeaderOrStaffTx, assertStaffTx } from "./team-service";
 // sources") true by construction rather than by convention: querying
 // those rows back IS the trace.
 //
-// Known limitation, flagged rather than silently handled: the "Eco
-// Incentive" Market Shock's +15-instead-of-+10 override (Phase 2) is not
-// wired through here — there is no per-unit record of "this Solar came
-// from a free-this-round lot" to check against, so every Eco bonus applies
-// the standard +10 for now.
+// The "Eco Incentive" Market Shock's +15-instead-of-+10 override is
+// automated via teams.eco_eligible_solar_units (auction-service.ts's
+// closeLot credits it whenever a team wins a lot in a round where the
+// shock was active for that round's material — see
+// auction_rounds.eco_bonus_override) rather than a true per-physical-unit
+// trace: it's a capped counter, not a FIFO ledger of which exact Solar
+// units are "free-round" ones. Capping it at usage time by the team's
+// CURRENT Solar holdings (not just the stored counter) means trading the
+// physical Solar away can't be used to bank the credit and cash it in on
+// unrelated Solar acquired later — a good-faith approximation of the
+// rulebook's intent, not a claim of exact physical-unit provenance.
 
-const BONUS_POINTS = { eco: 10, luxury: 5, landmark: 20 } as const;
+const BONUS_POINTS = { eco: 10, ecoIncentive: 15, luxury: 5, landmark: 20 } as const;
 const LUXURY_ELIGIBLE_RECIPE_KEYS = ["mall", "university", "office"];
 
 export interface BonusRequest {
@@ -106,12 +112,25 @@ export async function constructBuilding(params: {
     let landmarkBonus = 0;
     const bonusUses: Array<{ bonusType: "eco" | "luxury" | "landmark"; sourceMaterialTypeId: string; points: number }> = [];
 
+    let ecoIncentiveUnitsSpent = 0;
+
     if (params.bonuses?.eco) {
       const solar = await findMaterialByKey(tx, params.eventId, "solar");
       const available = await getQuantityForMaterial(tx, params.eventId, team.id, solar.id);
       if (available < 4) throw new GameError("recipe_incomplete", "Eco bonus requires 4 Solar panels.");
       consumptionPlan.push({ materialTypeId: solar.id, quantity: 4, note: "eco bonus" });
-      ecoBonus = BONUS_POINTS.eco;
+
+      // Eco Incentive automation: only as many banked eco-eligible units
+      // as the team ACTUALLY still holds count (see the module comment
+      // above for why) — if that covers all 4 being consumed, this
+      // bonus is the Market Shock's +15 instead of the standard +10.
+      const ecoEligible = Math.min(team.ecoEligibleSolarUnits, available);
+      if (ecoEligible >= 4) {
+        ecoBonus = BONUS_POINTS.ecoIncentive;
+        ecoIncentiveUnitsSpent = 4;
+      } else {
+        ecoBonus = BONUS_POINTS.eco;
+      }
       bonusUses.push({ bonusType: "eco", sourceMaterialTypeId: solar.id, points: ecoBonus });
     }
 
@@ -140,6 +159,13 @@ export async function constructBuilding(params: {
       consumptionPlan.push({ materialTypeId: blueprint.id, quantity: 1, note: "landmark bonus" });
       landmarkBonus = BONUS_POINTS.landmark;
       bonusUses.push({ bonusType: "landmark", sourceMaterialTypeId: blueprint.id, points: landmarkBonus });
+    }
+
+    if (ecoIncentiveUnitsSpent > 0) {
+      await tx
+        .update(teams)
+        .set({ ecoEligibleSolarUnits: team.ecoEligibleSolarUnits - ecoIncentiveUnitsSpent })
+        .where(eq(teams.id, team.id));
     }
 
     const deedNumber = await nextDeedNumber(tx, params.eventId);

@@ -22,6 +22,10 @@ export interface DrawnShockEffect {
 interface MaterialShockEffectResult {
   adjustedOpeningBid: number;
   perLotOpeningBidOverrides: Map<number, number>;
+  // Set only for material_free_this_round when it matches this round's
+  // material — startRound persists this onto auction_rounds so closeLot
+  // can credit winning teams' eco-eligible Solar count automatically.
+  ecoBonusOverride: number | null;
 }
 
 export type ShockEffect =
@@ -79,6 +83,7 @@ export function applyMaterialEffect(
 ): MaterialShockEffectResult & { note: string } {
   const perLotOpeningBidOverrides = new Map<number, number>();
   let adjustedOpeningBid = material.defaultOpeningBid;
+  let ecoBonusOverride: number | null = null;
   let note = "No effect on this round's material.";
 
   switch (effect.type) {
@@ -97,14 +102,15 @@ export function applyMaterialEffect(
     case "material_free_this_round":
       if (effect.materialKey === material.key) {
         adjustedOpeningBid = 0;
-        note = `${material.key} lots are free this round (Eco bonus overridden to +${effect.ecoBonusOverride} — applied at construction time, Stage 2).`;
+        ecoBonusOverride = effect.ecoBonusOverride;
+        note = `${material.key} lots are free this round — winning teams automatically get +${effect.ecoBonusOverride} Eco (instead of the standard bonus) when they build with it.`;
       }
       break;
     default:
       break;
   }
 
-  return { adjustedOpeningBid, perLotOpeningBidOverrides, note };
+  return { adjustedOpeningBid, perLotOpeningBidOverrides, ecoBonusOverride, note };
 }
 
 // Effects that apply regardless of which material is currently up for
@@ -165,12 +171,13 @@ export async function applyGlobalEffect(
     // pre-baked into priorityMaterialKeys at seed time (see
     // MARKET_SHOCK_SEED in packages/db/seed/data.ts), since lot size is a
     // static per-material fact, not something to recompute here.
-    // Actually raising that material's *next* round's opening bid is left
-    // to whichever startRound call handles it next (recorded via audit +
-    // note only) — this function only identifies and logs the target, it
-    // does not have a "future round" to adjust yet.
+    // Automated (was previously logged for the moderator to apply by
+    // hand): stamps the increase onto material_types.
+    // pendingOpeningBidIncreasePercent, which startRound reads and
+    // clears the next time a round actually starts for this exact
+    // material — no manual openingBidOverride step required.
     const [materialWithBankStock] = await tx
-      .select({ key: materialTypes.key })
+      .select({ id: materialTypes.id, key: materialTypes.key })
       .from(materialLots)
       .innerJoin(materialTypes, eq(materialLots.materialTypeId, materialTypes.id))
       .where(
@@ -181,9 +188,14 @@ export async function applyGlobalEffect(
         ),
       )
       .limit(1);
-    return materialWithBankStock
-      ? `Next ${materialWithBankStock.key} round should open ${effect.percent}% higher (moderator: apply manually via openingBidOverride).`
-      : "No unsold material from the priority list yet — no effect.";
+    if (!materialWithBankStock) {
+      return "No unsold material from the priority list yet — no effect.";
+    }
+    await tx
+      .update(materialTypes)
+      .set({ pendingOpeningBidIncreasePercent: effect.percent })
+      .where(eq(materialTypes.id, materialWithBankStock.id));
+    return `${materialWithBankStock.key}'s next round will automatically open ${effect.percent}% higher.`;
   }
 
   return null;

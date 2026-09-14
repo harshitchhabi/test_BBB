@@ -131,4 +131,114 @@ describe("Market Shock deck", () => {
     expect(updatedA.auctionTokens).toBe(1200);
     expect(updatedB.auctionTokens).toBe(1200);
   });
+
+  it("Eco Incentive: winning a free-round Solar lot auto-grants +15 (not +10) at construction, capped by real holdings", async () => {
+    const { event, moderator, teamA } = await createTestFixture(dbModule.db);
+
+    const [solar] = await dbModule.db
+      .insert(schema.materialTypes)
+      .values({ eventId: event.id, key: "solar", name: "Solar", unitLabel: "units", stickerPrice: 5, isRare: false, isBonusOnly: true, sortOrder: 2, defaultLotQuantity: 100, defaultOpeningBid: 100 })
+      .returning();
+    await dbModule.db.insert(schema.marketShockCards).values({
+      eventId: event.id,
+      key: "eco_incentive",
+      title: "Eco Incentive",
+      description: "Solar lots are free this round; Solar attached this round gives +15 Eco instead of +10.",
+      effectJson: JSON.stringify({ type: "material_free_this_round", materialKey: "solar", ecoBonusOverride: 15 }),
+      copiesInDeck: 1,
+    });
+    const [recipe] = await dbModule.db.insert(schema.buildingRecipes).values({ eventId: event.id, key: "shed", name: "Shed", basePoints: 5, sortOrder: 1 }).returning();
+
+    // Round 1 has no card (sequence 1) - just retire it to reach round 2,
+    // where the only card in the deck is guaranteed to be drawn. teamA's
+    // base recipe material comes from a plain grant, not the auction -
+    // this test is only exercising the Eco path, not the base recipe.
+    const round1 = await engine.startRound({ eventId: event.id, materialTypeId: (await dbModule.db.select().from(schema.materialTypes).where(dbModule.and(dbModule.eq(schema.materialTypes.eventId, event.id), dbModule.eq(schema.materialTypes.key, "bricks"))))[0].id, actorParticipantId: moderator.id });
+    await retireRound(event.id, round1.id, moderator.id);
+
+    const round2 = await engine.startRound({ eventId: event.id, materialTypeId: solar.id, actorParticipantId: moderator.id });
+    expect(round2.ecoBonusOverride).toBe(15);
+    const lot = await engine.openNextLot({ eventId: event.id, roundId: round2.id, actorParticipantId: moderator.id });
+    expect(lot.openingBid).toBe(0); // material_free_this_round
+
+    await engine.placeBid({ eventId: event.id, auctionLotId: lot.id, teamId: teamA.team.id, actingParticipantId: teamA.leader.id, amount: 50 });
+    await engine.closeLot({ eventId: event.id, auctionLotId: lot.id, actorParticipantId: moderator.id, reason: "close" });
+
+    const [afterWin] = await dbModule.db.select().from(schema.teams).where(dbModule.eq(schema.teams.id, teamA.team.id));
+    expect(afterWin.ecoEligibleSolarUnits).toBe(100); // the whole free lot's quantity
+
+    await engine.setEventStatus({ eventId: event.id, status: "stage_2", actorParticipantId: moderator.id });
+    const building = await engine.constructBuilding({
+      eventId: event.id,
+      teamId: teamA.team.id,
+      recipeId: recipe.id,
+      bonuses: { eco: true },
+      actorParticipantId: teamA.leader.id,
+    });
+    expect(building.ecoBonus).toBe(15); // NOT the standard 10
+
+    const [afterBuild] = await dbModule.db.select().from(schema.teams).where(dbModule.eq(schema.teams.id, teamA.team.id));
+    expect(afterBuild.ecoEligibleSolarUnits).toBe(96); // 100 - 4 spent on this bonus
+
+    // A second Eco bonus on ordinary (non-free-round) Solar correctly
+    // falls back to the standard +10 once the eco-eligible units run out
+    // relative to a fresh recipe's requirement - simulated here by
+    // draining the counter to below 4 directly and building again.
+    await dbModule.db.update(schema.teams).set({ ecoEligibleSolarUnits: 2 }).where(dbModule.eq(schema.teams.id, teamA.team.id));
+    const secondBuilding = await engine.constructBuilding({
+      eventId: event.id,
+      teamId: teamA.team.id,
+      recipeId: recipe.id,
+      bonuses: { eco: true },
+      actorParticipantId: teamA.leader.id,
+    });
+    expect(secondBuilding.ecoBonus).toBe(10); // standard bonus, not enough banked eco-eligible units
+  });
+
+  it("Supply Crunch: automatically raises the next round's opening bid for the identified material, then clears itself", async () => {
+    const { event, moderator } = await createTestFixture(dbModule.db);
+
+    const [medical] = await dbModule.db
+      .insert(schema.materialTypes)
+      .values({ eventId: event.id, key: "medical", name: "Medical", unitLabel: "units", stickerPrice: 10, isRare: true, isBonusOnly: false, sortOrder: 2, defaultLotQuantity: 50, defaultOpeningBid: 400 })
+      .returning();
+    await dbModule.db.insert(schema.marketShockCards).values({
+      eventId: event.id,
+      key: "supply_crunch",
+      title: "Supply Crunch",
+      description: "The unsold material with the smallest lot size opens 50% higher.",
+      effectJson: JSON.stringify({ type: "smallest_unsold_lot_price_increase", percent: 50, priorityMaterialKeys: ["medical"] }),
+      copiesInDeck: 1,
+    });
+
+    const [bricks] = await dbModule.db.select().from(schema.materialTypes).where(dbModule.and(dbModule.eq(schema.materialTypes.eventId, event.id), dbModule.eq(schema.materialTypes.key, "bricks")));
+
+    // Round 1: Medical goes completely unsold (no bids) - lands in bank
+    // stock, which is what makes it a Supply Crunch target.
+    const round1 = await engine.startRound({ eventId: event.id, materialTypeId: medical.id, actorParticipantId: moderator.id });
+    await retireRound(event.id, round1.id, moderator.id);
+
+    // Round 2 (Bricks): the only card in the deck is drawn - a global
+    // effect, so it fires regardless of round 2's own material, flagging
+    // Medical for its own next round.
+    const round2 = await engine.startRound({ eventId: event.id, materialTypeId: bricks.id, actorParticipantId: moderator.id });
+    expect(round2.marketShockCardId).not.toBeNull();
+    await retireRound(event.id, round2.id, moderator.id);
+
+    const [medicalAfterCrunch] = await dbModule.db.select().from(schema.materialTypes).where(dbModule.eq(schema.materialTypes.id, medical.id));
+    expect(medicalAfterCrunch.pendingOpeningBidIncreasePercent).toBe(50);
+
+    // Round 3: Medical comes up again - the pending increase applies
+    // automatically, no moderator openingBidOverride needed, and clears
+    // itself so a FOURTH Medical round isn't also inflated.
+    const round3 = await engine.startRound({ eventId: event.id, materialTypeId: medical.id, actorParticipantId: moderator.id });
+    const round3Lots = await dbModule.db.select().from(schema.auctionLots).where(dbModule.eq(schema.auctionLots.roundId, round3.id));
+    expect(round3Lots.length).toBeGreaterThan(0);
+    for (const lot of round3Lots) {
+      expect(lot.openingBid).toBe(Math.ceil(400 * 1.5)); // 400 default * 1.5 (50% higher)
+    }
+
+    const [medicalAfterRound3] = await dbModule.db.select().from(schema.materialTypes).where(dbModule.eq(schema.materialTypes.id, medical.id));
+    expect(medicalAfterRound3.pendingOpeningBidIncreasePercent).toBeNull();
+  });
 });
