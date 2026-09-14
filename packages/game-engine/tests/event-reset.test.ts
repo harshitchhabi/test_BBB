@@ -97,10 +97,24 @@ describe("resetEventForNewRound", () => {
     const after = await dbModule.db.select().from(schema.auditLog).where(dbModule.eq(schema.auditLog.eventId, event.id));
     expect(after.length).toBe(before.length + 1);
 
+    // Round 1's team owner login is released, not left permanently taken -
+    // same reasoning as deleteTeam's owner-release. Without this, a
+    // moderator running back-to-back rounds could never reuse the exact
+    // same team usernames for the next round, which defeats the whole
+    // point of resetting on the same event id instead of creating a new
+    // event.
+    const [releasedLeader1] = await dbModule.db.select().from(schema.participants).where(dbModule.eq(schema.participants.id, leader1.id));
+    expect(releasedLeader1).toBeDefined();
+    expect(releasedLeader1.username).toMatch(/^released-/);
+    expect(releasedLeader1.sessionId).toBeNull();
+
     // Round 2 can now start completely clean: a new team, using the same
-    // event id/link, same material config.
+    // event id/link, same material config, and even the EXACT SAME
+    // username round 1's team used (proving it was really released, not
+    // just renamed to something that merely looks free).
     await engine.setEventStatus({ eventId: event.id, status: "lobby", actorParticipantId: moderator.id });
-    const [leader2] = await dbModule.db.insert(schema.participants).values({ name: "Leader2", email: `leader2-${event.id}@test.local`, username: `leader2-${event.id}`, passwordHash: "$2a$10$CwTycUXWue0Thq9StjUM0uJ8oxL/Yjyq6XvXqAtVvjGdiWZOWXQNi" }).returning();
+    const round1Username = leader1.username;
+    const [leader2] = await dbModule.db.insert(schema.participants).values({ name: "Leader2", email: `leader2-${event.id}@test.local`, username: round1Username, passwordHash: "$2a$10$CwTycUXWue0Thq9StjUM0uJ8oxL/Yjyq6XvXqAtVvjGdiWZOWXQNi" }).returning();
     const team2 = await engine.createTeam({ eventId: event.id, ownerParticipantId: leader2.id, name: "Round2Team" });
     expect(team2.auctionTokens).toBe(1000); // fresh starting balance, not round 1's leftover
 

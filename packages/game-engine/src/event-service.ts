@@ -15,11 +15,13 @@ import {
   scoutReports,
   cityAuctions,
   scoreSnapshots,
+  participants,
 } from "db/schema";
 import { GameError } from "./errors";
 import { recordAudit } from "./audit";
 import { runInTransaction } from "./tx";
 import { assertStaffTx } from "./team-service";
+import { generatePassword, hashPassword } from "./auth-service";
 
 // This was a real gap, not a deliberate omission: nothing anywhere in
 // Phases 1-5 ever wrote to `events.status` except revealCitiesAndScore
@@ -247,8 +249,22 @@ export async function resetEventForNewRound(params: { eventId: string; actorPart
     const [event] = await tx.select().from(events).where(eq(events.id, params.eventId)).for("update");
     if (!event) throw new GameError("not_found", "Event not found.");
 
-    const teamRows = await tx.select({ id: teams.id }).from(teams).where(eq(teams.eventId, params.eventId));
+    const teamRows = await tx.select({ id: teams.id, ownerParticipantId: teams.ownerParticipantId }).from(teams).where(eq(teams.eventId, params.eventId));
     const teamCount = teamRows.length;
+
+    // Same reasoning as deleteTeam's owner-release (incident-service.ts):
+    // without this, every deleted team's username stays taken forever
+    // (a global unique constraint), which would block reusing the exact
+    // same team names for the very next round this reset is meant to
+    // set up. The participants row itself survives - only the login
+    // credential is released and the row renamed out of the way.
+    for (const team of teamRows) {
+      const [owner] = await tx.select().from(participants).where(eq(participants.id, team.ownerParticipantId)).for("update");
+      if (!owner) continue;
+      const releasedUsername = `released-${owner.username}-${owner.id.slice(0, 8)}`;
+      const passwordHash = await hashPassword(generatePassword());
+      await tx.update(participants).set({ username: releasedUsername, passwordHash, sessionId: null }).where(eq(participants.id, owner.id));
+    }
 
     // Children of constructed_buildings / city_auctions / trades that
     // aren't scoped by event_id themselves — deleted via their parent's
