@@ -266,6 +266,16 @@ export async function resetEventForNewRound(params: { eventId: string; actorPart
       await tx.update(participants).set({ username: releasedUsername, passwordHash, sessionId: null }).where(eq(participants.id, owner.id));
     }
 
+    // Cities are config (including the hidden multiplier), not runtime
+    // state — reset only what a round actually changes. This MUST run
+    // before the teams delete below: cities.assigned_team_id is a real FK
+    // to teams.id with no cascade, so deleting a team any city still
+    // points to fails with a foreign-key violation - a crash discovered
+    // live, in production, after a completed round (every completed
+    // round leaves every city assigned to a team, so this was not a rare
+    // edge case - it broke every reset attempted after Stage 3 ever ran).
+    await tx.update(cities).set({ assignedTeamId: null, saleOrder: null, revealState: "hidden" }).where(eq(cities.eventId, params.eventId));
+
     // Children of constructed_buildings / city_auctions / trades that
     // aren't scoped by event_id themselves — deleted via their parent's
     // eventId-scoped delete below, which cascades (building_bonus_uses,
@@ -282,10 +292,6 @@ export async function resetEventForNewRound(params: { eventId: string; actorPart
     await tx.delete(teamInventoryTransactions).where(eq(teamInventoryTransactions.eventId, params.eventId));
     await tx.delete(teamMembers).where(eq(teamMembers.eventId, params.eventId));
     await tx.delete(teams).where(eq(teams.eventId, params.eventId));
-
-    // Cities are config (including the hidden multiplier), not runtime
-    // state — reset only what a round actually changes.
-    await tx.update(cities).set({ assignedTeamId: null, saleOrder: null, revealState: "hidden" }).where(eq(cities.eventId, params.eventId));
 
     const [resetEvent] = await tx
       .update(events)

@@ -58,6 +58,15 @@ describe("resetEventForNewRound", () => {
     expect((await dbModule.db.select().from(schema.materialLots).where(dbModule.eq(schema.materialLots.eventId, event.id))).length).toBe(1);
     expect((await dbModule.db.select().from(schema.teamInventoryTransactions).where(dbModule.eq(schema.teamInventoryTransactions.eventId, event.id))).length).toBeGreaterThan(0);
 
+    // Simulates what every real completed round leaves behind: a city
+    // actually assigned to a team. This is the exact scenario that
+    // crashed in production before the fix - cities.assigned_team_id is
+    // a real FK to teams.id with no cascade, so deleting a team any city
+    // still points to fails outright unless the city's pointer is
+    // cleared FIRST. A test that never assigns a city (as this one
+    // didn't, before this line) can't catch that ordering bug at all.
+    await dbModule.db.update(schema.cities).set({ assignedTeamId: team1.id, saleOrder: 1, revealState: "revealed" }).where(dbModule.eq(schema.cities.id, city.id));
+
     const before = await dbModule.db.select().from(schema.auditLog).where(dbModule.eq(schema.auditLog.eventId, event.id));
 
     const reset = await engine.resetEventForNewRound({ eventId: event.id, actorParticipantId: moderator.id, reason: "End of round 1." });
