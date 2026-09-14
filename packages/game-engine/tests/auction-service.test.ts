@@ -72,6 +72,34 @@ describe("startRound + openNextLot + placeBid + closeLot", () => {
     expect(result.bid.rejectionReason).toMatch(/at least/i);
   });
 
+  it("serializes concurrent openNextLot calls for the same round — only one lot ever ends up live", async () => {
+    const { event, moderator, material } = await createTestFixture(dbModule.db);
+    const round = await engine.startRound({ eventId: event.id, materialTypeId: material.id, actorParticipantId: moderator.id });
+
+    // The exact race this test guards against: two moderator calls (a
+    // double-click, or two staff accounts) racing to open the round's
+    // next lot before either has committed. Before the fix, both could
+    // see "no lot live yet" and both succeed, opening two lots live at
+    // once for the same round.
+    const results = await Promise.allSettled([
+      engine.openNextLot({ eventId: event.id, roundId: round.id, actorParticipantId: moderator.id }),
+      engine.openNextLot({ eventId: event.id, roundId: round.id, actorParticipantId: moderator.id }),
+    ]);
+
+    const fulfilled = results.filter((r) => r.status === "fulfilled");
+    const rejected = results.filter((r) => r.status === "rejected");
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    // @ts-expect-error - narrowed by the length check above
+    expect(rejected[0].reason).toMatchObject({ code: "conflict" });
+
+    const liveLots = await dbModule.db
+      .select()
+      .from(schema.auctionLots)
+      .where(dbModule.and(dbModule.eq(schema.auctionLots.roundId, round.id), dbModule.eq(schema.auctionLots.status, "live")));
+    expect(liveLots).toHaveLength(1);
+  });
+
   it("rejects a bid from a non-leader team member", async () => {
     const { event, moderator, material, teamA } = await createTestFixture(dbModule.db);
     const round = await engine.startRound({ eventId: event.id, materialTypeId: material.id, actorParticipantId: moderator.id });

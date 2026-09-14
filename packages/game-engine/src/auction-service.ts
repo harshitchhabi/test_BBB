@@ -209,6 +209,16 @@ export async function openNextLot(params: { eventId: string; roundId: string; ac
     const [settings] = await tx.select().from(eventSettings).where(eq(eventSettings.eventId, params.eventId));
     if (!settings) throw new GameError("not_found", "Event settings not found.");
 
+    // Known gap since docs/phase-1.md, never fixed until now: this
+    // function used to check "is another lot already live" with a plain
+    // SELECT and no lock, so two concurrent open-next-lot calls for the
+    // same round (a moderator double-clicking, or two staff accounts
+    // acting at once) could both see no live lot and both proceed,
+    // opening two lots live at once. Locking the round row first
+    // serializes any second concurrent call behind the first's commit,
+    // same pattern already used for team/lot rows elsewhere in this file.
+    await tx.select().from(auctionRounds).where(eq(auctionRounds.id, params.roundId)).for("update");
+
     const [stillLive] = await tx
       .select({ id: auctionLots.id })
       .from(auctionLots)
