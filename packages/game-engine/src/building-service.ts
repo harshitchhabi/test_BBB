@@ -232,7 +232,7 @@ export async function constructBuilding(params: {
   });
 }
 
-export async function voidBuilding(params: { eventId: string; buildingId: string; moderatorParticipantId: string; reason: string }) {
+export async function voidBuilding(params: { eventId: string; buildingId: string; moderatorParticipantId: string; reason?: string }) {
   return runInTransaction(async (tx, queueBroadcast) => {
     await assertStaffTx(tx, params.eventId, params.moderatorParticipantId);
     const [building] = await tx.select().from(constructedBuildings).where(eq(constructedBuildings.id, params.buildingId)).for("update");

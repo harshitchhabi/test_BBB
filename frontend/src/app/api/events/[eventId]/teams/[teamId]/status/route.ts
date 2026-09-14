@@ -8,14 +8,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ eventId
   try {
     const { eventId, teamId } = await params;
     const participant = await requireParticipant();
-    const { status, reason } = await req.json();
+    const { status, reason } = await req.json().catch(() => ({}));
     if (status !== "active" && status !== "withdrawn" && status !== "disqualified") {
       return NextResponse.json({ error: "invalid_input", message: 'status must be "active", "withdrawn", or "disqualified".' }, { status: 400 });
     }
-    if (typeof reason !== "string" || reason.trim().length === 0) {
-      return NextResponse.json({ error: "invalid_input", message: "A reason is required." }, { status: 400 });
-    }
-    const result = await setTeamStatus({ eventId, teamId, status, actorParticipantId: participant.id, reason });
+    const result = await setTeamStatus({ eventId, teamId, status, actorParticipantId: participant.id, reason: typeof reason === "string" ? reason : undefined });
     return NextResponse.json(result);
   } catch (err) {
     return apiErrorResponse(err);

@@ -10,12 +10,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ eventId
   try {
     const { eventId, participantId } = await params;
     const participant = await requireParticipant();
-    const { reason } = await req.json();
-    if (typeof reason !== "string" || reason.trim().length === 0) {
-      return NextResponse.json({ error: "invalid_input", message: "A reason is required to reset a login's password." }, { status: 400 });
-    }
+    const { reason } = await req.json().catch(() => ({}));
 
-    const result = await resetLoginPassword({ eventId, actorParticipantId: participant.id, participantId, reason });
+    const result = await resetLoginPassword({ eventId, actorParticipantId: participant.id, participantId, reason: typeof reason === "string" ? reason : undefined });
     return NextResponse.json(result);
   } catch (err) {
     return apiErrorResponse(err);

@@ -10,11 +10,8 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ event
   try {
     const { eventId, teamId } = await params;
     const participant = await requireParticipant();
-    const { reason } = await req.json();
-    if (typeof reason !== "string" || reason.trim().length === 0) {
-      return NextResponse.json({ error: "invalid_input", message: "A reason is required to delete a team." }, { status: 400 });
-    }
-    const result = await deleteTeam({ eventId, teamId, actorParticipantId: participant.id, reason });
+    const { reason } = await req.json().catch(() => ({}));
+    const result = await deleteTeam({ eventId, teamId, actorParticipantId: participant.id, reason: typeof reason === "string" ? reason : undefined });
     return NextResponse.json(result);
   } catch (err) {
     return apiErrorResponse(err);

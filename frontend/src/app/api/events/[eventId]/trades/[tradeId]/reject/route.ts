@@ -6,11 +6,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ eventId
   try {
     const { eventId, tradeId } = await params;
     const participant = await requireParticipant();
-    const { reason } = await req.json();
-    if (typeof reason !== "string" || reason.trim().length === 0) {
-      return NextResponse.json({ error: "invalid_input", message: "A reason is required to reject a trade." }, { status: 400 });
-    }
-    const trade = await rejectTrade({ eventId, tradeId, moderatorParticipantId: participant.id, reason });
+    const { reason } = await req.json().catch(() => ({}));
+    const trade = await rejectTrade({ eventId, tradeId, moderatorParticipantId: participant.id, reason: typeof reason === "string" ? reason : undefined });
     return NextResponse.json(trade);
   } catch (err) {
     return apiErrorResponse(err);

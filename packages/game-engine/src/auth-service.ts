@@ -116,6 +116,29 @@ export async function logout(participantId: string): Promise<void> {
   await db.update(participants).set({ sessionId: null }).where(eq(participants.id, participantId));
 }
 
+// Self-service password change — any signed-in participant (team or
+// staff) changing their own credential, as opposed to resetLoginPassword
+// (team-service.ts) which is a staff override on someone ELSE's login.
+// Deliberately does NOT touch sessionId: an admin-forced reset clears it
+// so the old session is kicked out immediately, but here the person
+// changing it IS the one currently signed in, so there's nothing to kick
+// out — leaving their session intact means they aren't logged out by
+// changing their own password.
+export async function changeOwnPassword(params: { participantId: string; currentPassword: string; newPassword: string }) {
+  const [participant] = await db.select().from(participants).where(eq(participants.id, params.participantId));
+  if (!participant) throw new GameError("not_found", "Login not found.");
+
+  const ok = await verifyPassword(params.currentPassword, participant.passwordHash);
+  if (!ok) throw new GameError("unauthorized", "Current password is incorrect.");
+
+  if (params.newPassword.length < 6) {
+    throw new GameError("invalid_input", "New password must be at least 6 characters.");
+  }
+
+  const passwordHash = await hashPassword(params.newPassword);
+  await db.update(participants).set({ passwordHash }).where(eq(participants.id, params.participantId));
+}
+
 // Called on every authenticated request (via requireParticipant) to
 // check the session cookie's sessionId still matches what's on the row —
 // a mismatch means a newer login, an admin-forced password reset, or an

@@ -57,6 +57,37 @@ export default function ModeratorSetupPage({ params }: { params: Promise<{ event
   const [forceBusy, setForceBusy] = useState(false);
   const [forceMessage, setForceMessage] = useState<string | null>(null);
 
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [passwordBusy, setPasswordBusy] = useState(false);
+  const [passwordMessage, setPasswordMessage] = useState<{ text: string; ok: boolean } | null>(null);
+
+  // Self-service — changes the signed-in staff member's own password
+  // without signing them out (see auth-service.ts's changeOwnPassword for
+  // why: unlike an admin-forced reset on someone ELSE's login, there's no
+  // "kick out the old session" step needed when you're changing your own).
+  async function changeMyPassword() {
+    if (passwordBusy || !currentPassword || !newPassword) return;
+    setPasswordBusy(true);
+    setPasswordMessage(null);
+    try {
+      const res = await fetch("/api/auth/change-password", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ currentPassword, newPassword }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) setPasswordMessage({ text: body.message ?? `Error (${res.status})`, ok: false });
+      else {
+        setPasswordMessage({ text: "Password changed.", ok: true });
+        setCurrentPassword("");
+        setNewPassword("");
+      }
+    } finally {
+      setPasswordBusy(false);
+    }
+  }
+
   // The Rules page (frontend/src/app/events/[eventId]/rules/page.tsx)
   // reads every one of these straight off event_settings - this form
   // edits the exact same row. Starts empty; seeded from `overview` once
@@ -325,6 +356,35 @@ export default function ModeratorSetupPage({ params }: { params: Promise<{ event
       <HeaderBanner>EVENT SETUP</HeaderBanner>
 
       <Panel className="w-full max-w-lg mb-4">
+        <PanelTitle>CHANGE MY PASSWORD</PanelTitle>
+        <p className="text-white/70 text-sm mb-3">Updates your own login — you stay signed in, no need to log back in.</p>
+        <div className="flex gap-2 flex-wrap">
+          <input
+            type="password"
+            value={currentPassword}
+            onChange={(e) => setCurrentPassword(e.target.value)}
+            placeholder="Current password"
+            className="flex-1 min-w-40 px-3 py-2 rounded text-black"
+          />
+          <input
+            type="password"
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+            placeholder="New password (min 6 characters)"
+            className="flex-1 min-w-40 px-3 py-2 rounded text-black"
+          />
+          <WoodButton variant="primary" onClick={changeMyPassword} disabled={passwordBusy || !currentPassword || !newPassword}>
+            {passwordBusy ? "Saving…" : "Change password"}
+          </WoodButton>
+        </div>
+        {passwordMessage && (
+          <p className={`px-3 py-2 rounded-md font-medium mt-3 ${passwordMessage.ok ? "text-green-100 bg-green-950/80" : "text-red-100 bg-red-950/80"}`}>
+            {passwordMessage.text}
+          </p>
+        )}
+      </Panel>
+
+      <Panel className="w-full max-w-lg mb-4">
         <PanelTitle>EVENT STAGE</PanelTitle>
         {overview ? (
           <>
@@ -335,7 +395,7 @@ export default function ModeratorSetupPage({ params }: { params: Promise<{ event
               <input
                 value={pauseReason}
                 onChange={(e) => setPauseReason(e.target.value)}
-                placeholder={currentStatus === "paused" ? "Reason to resume (required)" : "Reason to pause (required)"}
+                placeholder={currentStatus === "paused" ? "Reason to resume (optional)" : "Reason to pause (optional)"}
                 className="w-full px-3 py-2 rounded text-black mb-2"
               />
             )}
@@ -345,7 +405,7 @@ export default function ModeratorSetupPage({ params }: { params: Promise<{ event
                 <WoodButton
                   key={next}
                   variant={next === "paused" ? "danger" : "primary"}
-                  disabled={stageBusy || ((next === "paused" || currentStatus === "paused") && !pauseReason)}
+                  disabled={stageBusy}
                   onClick={() => advanceTo(next)}
                 >
                   {next === "paused" ? "Pause event" : `Advance to: ${STAGE_LABELS[next] ?? next}`}

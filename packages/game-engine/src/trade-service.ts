@@ -195,7 +195,7 @@ export async function registerTrade(params: { eventId: string; tradeId: string; 
   });
 }
 
-export async function rejectTrade(params: { eventId: string; tradeId: string; moderatorParticipantId: string; reason: string }) {
+export async function rejectTrade(params: { eventId: string; tradeId: string; moderatorParticipantId: string; reason?: string }) {
   return runInTransaction(async (tx, queueBroadcast) => {
     await assertStaffTx(tx, params.eventId, params.moderatorParticipantId);
     const trade = await loadTradeForUpdate(tx, params.eventId, params.tradeId);
@@ -315,7 +315,7 @@ export async function completeTrade(params: { eventId: string; tradeId: string; 
   });
 }
 
-export async function cancelTrade(params: { eventId: string; tradeId: string; actorParticipantId: string; reason: string }) {
+export async function cancelTrade(params: { eventId: string; tradeId: string; actorParticipantId: string; reason?: string }) {
   return runInTransaction(async (tx, queueBroadcast) => {
     // Section 7.9 lists cancel alongside register/approve/reject/complete
     // as a moderator control.

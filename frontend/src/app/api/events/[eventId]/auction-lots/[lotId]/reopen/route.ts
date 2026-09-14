@@ -6,11 +6,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ eventId
   try {
     const { eventId, lotId } = await params;
     const participant = await requireParticipant();
-    const { reason } = await req.json();
-    if (typeof reason !== "string" || reason.trim().length === 0) {
-      return NextResponse.json({ error: "invalid_input", message: "A reason is required." }, { status: 400 });
-    }
-    const lot = await reopenLot({ eventId, auctionLotId: lotId, actorParticipantId: participant.id, reason });
+    const { reason } = await req.json().catch(() => ({}));
+    const lot = await reopenLot({ eventId, auctionLotId: lotId, actorParticipantId: participant.id, reason: typeof reason === "string" ? reason : undefined });
     return NextResponse.json(lot);
   } catch (err) {
     return apiErrorResponse(err);
