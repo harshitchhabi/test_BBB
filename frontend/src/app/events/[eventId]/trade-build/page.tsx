@@ -23,6 +23,7 @@ export default function TradeBuildPage({ params }: { params: Promise<{ eventId: 
   const [myBuildings, setMyBuildings] = useState<any[]>([]);
   const [myTrades, setMyTrades] = useState<any[]>([]);
   const [bankStock, setBankStock] = useState<any[]>([]);
+  const [teamsInventory, setTeamsInventory] = useState<any[]>([]);
   const [message, setMessage] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -39,16 +40,18 @@ export default function TradeBuildPage({ params }: { params: Promise<{ eventId: 
       // roughly its slowest single request instead of the sum of all
       // four, which matters a lot given this refresh reruns on every
       // WebSocket broadcast (any team's bid, trade, or build).
-      const [ov, materials, rec, tr] = await Promise.all([
+      const [ov, materials, rec, tr, ti] = await Promise.all([
         fetchJson<any>(`/api/events/${eventId}/overview`),
         fetchJson<any>(`/api/events/${eventId}/bank-stock`),
         fetchJson<any>(`/api/events/${eventId}/recipes`),
         fetchJson<any>(`/api/events/${eventId}/trades/list`),
+        fetchJson<any>(`/api/events/${eventId}/teams-inventory`),
       ]);
       setOverview(ov);
       setBankStock(materials.stock);
       setRecipes(rec.recipes);
       setMyTrades(tr.trades);
+      setTeamsInventory(ti.teams);
       if (ov.myTeam) {
         const [inv, bld] = await Promise.all([
           fetchJson<any>(`/api/events/${eventId}/teams/${ov.myTeam.id}/inventory`),
@@ -141,6 +144,7 @@ export default function TradeBuildPage({ params }: { params: Promise<{ eventId: 
   }
 
   const otherTeams = overview.teams.filter((t: any) => t.id !== overview.myTeam.id);
+  const counterpartyInventory = teamsInventory.find((t: any) => t.teamId === counterpartyTeamId);
   // Trades still just a proposal, involving my team either way — the
   // counterparty needs to actually agree before anything moves, and the
   // proposer can withdraw their own offer while it's still pending.
@@ -164,6 +168,14 @@ export default function TradeBuildPage({ params }: { params: Promise<{ eventId: 
                   <option key={t.id} value={t.id}>{t.name}</option>
                 ))}
               </select>
+              {counterpartyTeamId && (
+                <div className="bg-black/30 rounded p-2 mb-2 text-xs text-white/90">
+                  <span className="text-yellow-300 font-semibold">{counterpartyInventory?.teamName ?? "This team"}'s materials: </span>
+                  {counterpartyInventory && counterpartyInventory.materials.length > 0
+                    ? counterpartyInventory.materials.map((m: any) => `${m.materialName} ${m.quantity}`).join(", ")
+                    : "none yet"}
+                </div>
+              )}
               {tradeLines.map((line, i) => (
                 <div key={i} className="flex gap-1 mt-2">
                   <select
@@ -278,6 +290,33 @@ export default function TradeBuildPage({ params }: { params: Promise<{ eventId: 
           </div>
         </Panel>
       </div>
+
+      <Panel className="w-full mt-4">
+        <PanelTitle>ALL TEAMS' MATERIALS</PanelTitle>
+        <p className="text-white/70 text-sm mb-3">
+          What every team currently holds — token balances and scores stay private, but materials are shared so you
+          can actually see what's worth proposing a trade for.
+        </p>
+        <div className="overflow-x-auto">
+          <table className="w-full text-white text-sm">
+            <tbody>
+              {teamsInventory.map((t: any) => (
+                <tr key={t.teamId} className="odd:bg-[#764A21]/30 align-top">
+                  <td className="pr-4 py-2 font-bold whitespace-nowrap">
+                    {t.teamName}
+                    {t.teamId === overview.myTeam.id ? " (you)" : ""}
+                  </td>
+                  <td className="py-2">
+                    {t.materials.length > 0
+                      ? t.materials.map((m: any) => `${m.materialName} ${m.quantity}`).join(", ")
+                      : <span className="text-white/50">none yet</span>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Panel>
 
       <Panel className="w-full mt-4">
         <PanelTitle>YOUR BUILDINGS</PanelTitle>

@@ -20,6 +20,7 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ eventId:
   const { eventId } = use(params);
   const { status } = useSession();
   const [state, setState] = useState<AuctionStateResponse | null>(null);
+  const [inventory, setInventory] = useState<Array<{ materialTypeId: string; materialName: string; quantity: number }>>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [bidAmount, setBidAmount] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -45,6 +46,15 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ eventId:
     if (res.ok) {
       setState(body);
       setLoadError(null);
+      // Section 7.3: a team deciding how much more to bid on a material
+      // needs to see how much of it they already hold, not just their
+      // token balance — previously this screen only showed tokens.
+      if (body.myTeamId) {
+        fetch(`/api/events/${eventId}/teams/${body.myTeamId}/inventory`)
+          .then((r) => r.json())
+          .then((d) => setInventory(d.inventory ?? []))
+          .catch(() => {});
+      }
     } else {
       // Previously this just silently did nothing on a non-200 — e.g. a
       // 403 for someone who hasn't joined a team yet left the screen
@@ -143,6 +153,10 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ eventId:
               <h2 className="text-2xl font-semibold text-[#FDE047] text-outline-black tracking-wide mb-6">PLACE YOUR BID</h2>
               <p className="text-[#F1EBB5] mb-2">
                 Lot #{state.liveLot.lotNumber} — {state.liveLot.materialName ?? state.liveLot.materialKey}
+                {(() => {
+                  const held = inventory.find((i: any) => i.materialKey === state.liveLot!.materialKey)?.quantity ?? 0;
+                  return held > 0 ? <span className="text-yellow-300"> (you already hold {held})</span> : null;
+                })()}
               </p>
               <div className="bg-white/20 border border-black rounded-lg p-4 mb-4">
                 <p className="text-lg text-black font-bold">
@@ -218,6 +232,20 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ eventId:
             <h2 className="text-lg font-semibold text-[#FDE047] text-outline-black mb-3 text-center tracking-widest">YOUR TEAM</h2>
             {myTeam ? <StatTile label={myTeam.name} value={`${myTeam.auctionTokens ?? "—"} tokens`} /> : <p className="text-[#F1EBB5] text-center">Not on a team.</p>}
           </Panel>
+
+          {myTeam && inventory.length > 0 && (
+            <Panel>
+              <h2 className="text-lg font-semibold text-[#FDE047] text-outline-black mb-3 text-center tracking-widest">YOUR MATERIALS</h2>
+              <div className="space-y-1">
+                {inventory.filter((i) => i.quantity !== 0).map((i) => (
+                  <div key={i.materialTypeId} className="flex justify-between text-sm bg-[#764A21]/40 rounded px-2 py-1">
+                    <span className="text-yellow-200">{i.materialName}</span>
+                    <span className="text-white font-bold">{i.quantity}</span>
+                  </div>
+                ))}
+              </div>
+            </Panel>
+          )}
         </div>
       </div>
     </PageFrame>

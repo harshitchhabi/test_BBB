@@ -1,5 +1,5 @@
 import { db, eq, and, sql } from "db";
-import { teamInventoryTransactions, materialTypes } from "db/schema";
+import { teamInventoryTransactions, materialTypes, teams } from "db/schema";
 import type { Tx } from "./tx";
 
 // Section 5.4: "The current stock becomes a queryable view: current
@@ -75,4 +75,50 @@ export async function getInventoryLedger(eventId: string, teamId: string) {
     .from(teamInventoryTransactions)
     .where(and(eq(teamInventoryTransactions.eventId, eventId), eq(teamInventoryTransactions.teamId, teamId)))
     .orderBy(teamInventoryTransactions.createdAt);
+}
+
+export interface TeamInventorySummary {
+  teamId: string;
+  teamName: string;
+  status: string;
+  materials: InventoryLine[];
+}
+
+// Deliberately different visibility from getTeamInventory: a team's
+// MATERIAL holdings (not its token balance, not its score) are exposed
+// to every other team in the event, not just staff and the team itself.
+// Added because there was no way for a team to know what anyone else
+// actually had to offer before proposing a trade — the Trade desk made
+// them guess a counterparty's materials blind. Tokens/scores stay
+// private (Section 8.3); only material counts, which a real trade
+// negotiation genuinely needs, are shared here.
+export async function getAllTeamsInventory(eventId: string): Promise<TeamInventorySummary[]> {
+  const teamRows = await db
+    .select({ id: teams.id, name: teams.name, status: teams.status })
+    .from(teams)
+    .where(eq(teams.eventId, eventId));
+
+  const rows = await db
+    .select({
+      teamId: teamInventoryTransactions.teamId,
+      materialTypeId: materialTypes.id,
+      materialKey: materialTypes.key,
+      materialName: materialTypes.name,
+      quantity: sql<number>`coalesce(sum(${teamInventoryTransactions.quantityDelta}), 0)`,
+    })
+    .from(materialTypes)
+    .leftJoin(teamInventoryTransactions, eq(teamInventoryTransactions.materialTypeId, materialTypes.id))
+    .where(eq(materialTypes.eventId, eventId))
+    .groupBy(teamInventoryTransactions.teamId, materialTypes.id, materialTypes.key, materialTypes.name);
+
+  const materialsByTeam = new Map<string, InventoryLine[]>();
+  for (const r of rows) {
+    if (!r.teamId) continue; // no transactions at all for this material yet, for any team
+    const list = materialsByTeam.get(r.teamId) ?? [];
+    const quantity = Number(r.quantity);
+    if (quantity !== 0) list.push({ materialTypeId: r.materialTypeId, materialKey: r.materialKey, materialName: r.materialName, quantity });
+    materialsByTeam.set(r.teamId, list);
+  }
+
+  return teamRows.map((t) => ({ teamId: t.id, teamName: t.name, status: t.status, materials: materialsByTeam.get(t.id) ?? [] }));
 }
