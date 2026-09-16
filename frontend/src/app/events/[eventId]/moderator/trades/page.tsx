@@ -73,7 +73,7 @@ export default function ModeratorTradesPage({ params }: { params: Promise<{ even
                 ))}
               </div>
               {t.status === "submitted" && (
-                <p className="text-yellow-300 text-sm mt-1">Waiting for {t.counterpartyTeamName} to accept — nothing for you to do yet.</p>
+                <p className="text-yellow-300 text-sm mt-1">Waiting for {t.counterpartyTeamName} to accept - nothing for you to do yet.</p>
               )}
               <div className="flex gap-2 mt-2 flex-wrap">
                 {t.status === "accepted" && (

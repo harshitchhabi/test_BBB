@@ -142,7 +142,7 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ eventId:
   return (
     <PageFrame>
       <TeamNav eventId={eventId} />
-      <HeaderBanner>🏗️ CONSTRUCTION BIDDING PLATFORM</HeaderBanner>
+      <HeaderBanner>CONSTRUCTION BIDDING PLATFORM</HeaderBanner>
 
       <div className="flex justify-center mb-4">
         <div className={`flex items-center gap-2 px-3 py-1 border-2 rounded bg-[#978056]/37 ${connected ? "border-green-400" : "border-red-400"}`}>
@@ -160,7 +160,7 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ eventId:
               </p>
               {state.activeRound.shock && (
                 <p className="text-yellow-300 mt-1">
-                  ⚡ {state.activeRound.shock.title} — {state.activeRound.shock.description}
+                  {state.activeRound.shock.title} - {state.activeRound.shock.description}
                 </p>
               )}
             </Panel>
@@ -170,7 +170,7 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ eventId:
             <Panel className="p-8">
               <h2 className="text-2xl font-semibold text-[#FDE047] text-outline-black tracking-wide mb-6">PLACE YOUR BID</h2>
               <p className="text-[#F1EBB5] mb-2">
-                Lot #{state.liveLot.lotNumber} — {state.liveLot.materialName ?? state.liveLot.materialKey}
+                Lot #{state.liveLot.lotNumber} - {state.liveLot.materialName ?? state.liveLot.materialKey}
                 {(() => {
                   const held = inventory.find((i: any) => i.materialKey === state.liveLot!.materialKey)?.quantity ?? 0;
                   return held > 0 ? <span className="text-yellow-300"> (you already hold {held})</span> : null;
@@ -207,10 +207,10 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ eventId:
                     </WoodButton>
                   </div>
                   <p className="text-[#F1EBB5]/70 text-xs text-center">
-                    Each press moves by the minimum raise (₹{state.liveLot.minimumRaise}) — always a bid the auction will actually accept.
+                    Each press moves by the minimum raise (₹{state.liveLot.minimumRaise}) - always a bid the auction will actually accept.
                   </p>
                   <WoodButton variant="primary" className="w-full text-lg py-3" onClick={submitBid} disabled={submitting || !bidAmount}>
-                    {submitting ? "⏳ Placing Bid..." : "🚀 Place Bid"}
+                    {submitting ? "Placing Bid..." : "Place Bid"}
                   </WoodButton>
                 </div>
               ) : (
@@ -219,7 +219,7 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ eventId:
                     ? "Only your team leader can bid."
                     : state.myRole !== "leader"
                       ? "You are not on a team in this event."
-                      : "This lot's timer has run out — waiting for the moderator to close it."}
+                      : "This lot's timer has run out - waiting for the moderator to close it."}
                 </p>
               )}
               {error && <p className="text-red-100 bg-red-950/80 px-3 py-2 rounded-md font-medium mt-3">{error}</p>}
@@ -265,7 +265,7 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ eventId:
 
           <Panel>
             <h2 className="text-lg font-semibold text-[#FDE047] text-outline-black mb-3 text-center tracking-widest">YOUR TEAM</h2>
-            {myTeam ? <StatTile label={myTeam.name} value={`${myTeam.auctionTokens ?? "—"} tokens`} /> : <p className="text-[#F1EBB5] text-center">Not on a team.</p>}
+            {myTeam ? <StatTile label={myTeam.name} value={`${myTeam.auctionTokens ?? "-"} tokens`} /> : <p className="text-[#F1EBB5] text-center">Not on a team.</p>}
           </Panel>
 
           {myTeam && inventory.length > 0 && (

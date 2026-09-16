@@ -76,7 +76,7 @@ export default function PortfolioPage({ params }: { params: Promise<{ eventId: s
         <div className="space-y-1">
           {buildings.filter((b) => b.status === "approved").map((b) => (
             <div key={b.id} className="bg-[#764A21]/40 rounded px-3 py-2 text-white text-sm">
-              {b.recipeName} — {b.basePoints} pts
+              {b.recipeName} - {b.basePoints} pts
               {b.ecoBonus ? ` +${b.ecoBonus} Eco` : ""}
               {b.luxuryBonus ? ` +${b.luxuryBonus} Luxury` : ""}
               {b.landmarkBonus ? ` +${b.landmarkBonus} Landmark` : ""}
@@ -110,7 +110,7 @@ export default function PortfolioPage({ params }: { params: Promise<{ eventId: s
           </div>
           {preReveal.city ? (
             <p className="text-center text-[#F1EBB5]">
-              Your city: {preReveal.city.name} ({preReveal.city.tier}) — multiplier revealed once every city is sold.
+              Your city: {preReveal.city.name} ({preReveal.city.tier}) - multiplier revealed once every city is sold.
             </p>
           ) : (
             <p className="text-center text-[#F1EBB5]">You haven't won a city yet.</p>

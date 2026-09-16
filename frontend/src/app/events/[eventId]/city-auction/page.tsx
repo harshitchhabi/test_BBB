@@ -124,7 +124,7 @@ export default function CityAuctionPage({ params }: { params: Promise<{ eventId:
         <div className="grid grid-cols-3 gap-3 w-full max-w-lg mb-4">
           <StatTile label="Wallet" value={overview.myTeam.cityWalletTokens} />
           <StatTile label="Leftover" value={overview.myTeam.auctionTokens} />
-          <StatTile label="Your city" value={myCity ? myCity.name : "—"} />
+          <StatTile label="Your city" value={myCity ? myCity.name : "-"} />
         </div>
       )}
 
@@ -148,9 +148,9 @@ export default function CityAuctionPage({ params }: { params: Promise<{ eventId:
               <WoodButton variant="primary" onClick={() => bid(liveAuction.id)} disabled={busy || !bidAmount}>Bid</WoodButton>
             </div>
           ) : timerExpired && overview.myRole === "leader" && !myCity ? (
-            <p className="text-[#F1EBB5]">This auction's timer has run out — waiting for the moderator to close it.</p>
+            <p className="text-[#F1EBB5]">This auction's timer has run out - waiting for the moderator to close it.</p>
           ) : myCity ? (
-            <p className="text-[#F1EBB5]">You already won a city — you can't bid again.</p>
+            <p className="text-[#F1EBB5]">You already won a city - you can't bid again.</p>
           ) : null}
         </Panel>
       )}

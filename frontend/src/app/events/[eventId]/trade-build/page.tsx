@@ -163,7 +163,7 @@ export default function TradeBuildPage({ params }: { params: Promise<{ eventId: 
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full">
         <Panel>
-          <PanelTitle>TRADE DESK — {overview.settings.tradeLimit - overview.myTeam.tradeCount} REMAINING</PanelTitle>
+          <PanelTitle>TRADE DESK - {overview.settings.tradeLimit - overview.myTeam.tradeCount} REMAINING</PanelTitle>
           {overview.myRole === "leader" ? (
             <div className="bg-[#764A21]/40 rounded-lg p-4 mb-4">
               <select value={counterpartyTeamId} onChange={(e) => setCounterpartyTeamId(e.target.value)} className="w-full mb-2 px-2 py-1 rounded text-black">
@@ -254,7 +254,7 @@ export default function TradeBuildPage({ params }: { params: Promise<{ eventId: 
           {otherPendingTrades.length > 0 && (
             <div className="mb-4">
               <h3 className="text-yellow-300 font-bold mb-2">Other teams' open offers</h3>
-              <p className="text-white/60 text-xs mb-2">Visible to everyone — only the two teams involved can accept, decline, or withdraw.</p>
+              <p className="text-white/60 text-xs mb-2">Visible to everyone - only the two teams involved can accept, decline, or withdraw.</p>
               <div className="space-y-2">
                 {otherPendingTrades.map((t: any) => (
                   <div key={t.id} className="bg-[#764A21]/25 rounded-lg p-3 text-sm text-white">
@@ -276,7 +276,7 @@ export default function TradeBuildPage({ params }: { params: Promise<{ eventId: 
           <div className="space-y-1">
             {myTrades.map((t) => (
               <div key={t.id} className="bg-[#764A21]/40 rounded px-3 py-2 text-sm text-white">
-                #{t.tradeNumber}: {t.proposerTeamName} ↔ {t.counterpartyTeamName} — <strong>{t.status}</strong>
+                #{t.tradeNumber}: {t.proposerTeamName} ↔ {t.counterpartyTeamName} - <strong>{t.status}</strong>
                 {t.binding ? " (pink slip)" : ""}
               </div>
             ))}
@@ -319,7 +319,7 @@ export default function TradeBuildPage({ params }: { params: Promise<{ eventId: 
       <Panel className="w-full mt-4">
         <PanelTitle>ALL TEAMS' MATERIALS</PanelTitle>
         <p className="text-white/70 text-sm mb-3">
-          What every team currently holds — token balances and scores stay private, but materials are shared so you
+          What every team currently holds - token balances and scores stay private, but materials are shared so you
           can actually see what's worth proposing a trade for.
         </p>
         <div className="overflow-x-auto">
@@ -348,7 +348,7 @@ export default function TradeBuildPage({ params }: { params: Promise<{ eventId: 
         <div className="space-y-1">
           {myBuildings.map((b) => (
             <div key={b.id} className="bg-[#764A21]/40 rounded px-3 py-2 flex justify-between text-white text-sm">
-              <span>{b.deedNumber} — {b.recipeName}</span>
+              <span>{b.deedNumber} - {b.recipeName}</span>
               <span>{b.basePoints + b.ecoBonus + b.luxuryBonus + b.landmarkBonus} pts ({b.status})</span>
             </div>
           ))}

@@ -244,4 +244,60 @@ describe("startRound + openNextLot + placeBid + closeLot", () => {
     expect(auditRows).toHaveLength(1);
     expect(auditRows[0].actorParticipantId).toBeNull(); // system-driven, not a moderator click
   });
+
+  it("lotQuantityOverride grants exactly that quantity to the winner, not the material's default", async () => {
+    const { event, moderator, material, teamA } = await createTestFixture(dbModule.db);
+    expect(material.defaultLotQuantity).not.toBe(25); // sanity: the override below must be actually different
+
+    const round = await engine.startRound({
+      eventId: event.id,
+      materialTypeId: material.id,
+      actorParticipantId: moderator.id,
+      lotQuantityOverride: 25,
+    });
+    const lot = await engine.openNextLot({ eventId: event.id, roundId: round.id, actorParticipantId: moderator.id });
+    await engine.placeBid({ eventId: event.id, auctionLotId: lot.id, teamId: teamA.team.id, actingParticipantId: teamA.leader.id, amount: 700 });
+    await engine.closeLot({ eventId: event.id, auctionLotId: lot.id, actorParticipantId: moderator.id });
+
+    const inventoryRows = await dbModule.db
+      .select()
+      .from(schema.teamInventoryTransactions)
+      .where(dbModule.eq(schema.teamInventoryTransactions.teamId, teamA.team.id));
+    expect(inventoryRows).toHaveLength(1);
+    expect(inventoryRows[0].quantityDelta).toBe(25);
+  });
+
+  it("omitting lotQuantityOverride still falls back to the material's configured default", async () => {
+    const { event, moderator, material, teamA } = await createTestFixture(dbModule.db);
+    const round = await engine.startRound({ eventId: event.id, materialTypeId: material.id, actorParticipantId: moderator.id });
+    const lot = await engine.openNextLot({ eventId: event.id, roundId: round.id, actorParticipantId: moderator.id });
+    await engine.placeBid({ eventId: event.id, auctionLotId: lot.id, teamId: teamA.team.id, actingParticipantId: teamA.leader.id, amount: 700 });
+    await engine.closeLot({ eventId: event.id, auctionLotId: lot.id, actorParticipantId: moderator.id });
+
+    const inventoryRows = await dbModule.db
+      .select()
+      .from(schema.teamInventoryTransactions)
+      .where(dbModule.eq(schema.teamInventoryTransactions.teamId, teamA.team.id));
+    expect(inventoryRows[0].quantityDelta).toBe(material.defaultLotQuantity);
+  });
+
+  it("rejects a non-positive or fractional lotQuantityOverride instead of silently accepting it", async () => {
+    const { event, moderator, material } = await createTestFixture(dbModule.db);
+
+    await expect(
+      engine.startRound({ eventId: event.id, materialTypeId: material.id, actorParticipantId: moderator.id, lotQuantityOverride: 0 }),
+    ).rejects.toThrow(/positive whole number/i);
+
+    await expect(
+      engine.startRound({ eventId: event.id, materialTypeId: material.id, actorParticipantId: moderator.id, lotQuantityOverride: -5 }),
+    ).rejects.toThrow(/positive whole number/i);
+
+    await expect(
+      engine.startRound({ eventId: event.id, materialTypeId: material.id, actorParticipantId: moderator.id, lotQuantityOverride: 2.5 }),
+    ).rejects.toThrow(/positive whole number/i);
+
+    // None of the rejected attempts should have left a half-started round behind.
+    const rounds = await dbModule.db.select().from(schema.auctionRounds).where(dbModule.eq(schema.auctionRounds.eventId, event.id));
+    expect(rounds).toHaveLength(0);
+  });
 });

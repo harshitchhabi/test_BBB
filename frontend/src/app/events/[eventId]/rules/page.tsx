@@ -46,10 +46,20 @@ export default function RulesPage({ params }: { params: Promise<{ eventId: strin
       </div>
 
       <div className="w-full max-w-3xl p-4 md:p-6 overflow-y-auto text-yellow-100 text-sm md:text-base leading-relaxed bg-[#3b2a1a]/70 rounded-lg">
-        <p className="mb-4 text-yellow-300">
-          Rulebook version: {overview.event.rulesVersion} · Current stage:{" "}
-          <strong>{STAGE_LABELS[overview.event.status] ?? overview.event.status}</strong>
-        </p>
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+          <p className="text-yellow-300">
+            Rulebook version: {overview.event.rulesVersion} · Current stage:{" "}
+            <strong>{STAGE_LABELS[overview.event.status] ?? overview.event.status}</strong>
+          </p>
+          {overview.isStaff && (
+            <a
+              href={`/events/${eventId}/moderator/setup#rules-settings`}
+              className="px-3 py-1.5 rounded text-sm bg-[#463d36] text-[#F1EBB5] hover:bg-[#62574e] shadow whitespace-nowrap"
+            >
+              Edit these rules
+            </a>
+          )}
+        </div>
 
         {s.customRulesNote && (
           <div className="mb-4 p-3 bg-yellow-900/40 border border-yellow-700 rounded whitespace-pre-wrap">{s.customRulesNote}</div>

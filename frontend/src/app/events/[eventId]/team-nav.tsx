@@ -53,7 +53,7 @@ export function TeamNav({ eventId }: { eventId: string }) {
           href={`/events/${eventId}/moderator/setup`}
           className="px-3 py-1.5 rounded text-sm md:text-base shadow bg-yellow-600 text-black font-bold hover:bg-yellow-500"
         >
-          🛠 Moderator Console
+          Moderator Console
         </Link>
       )}
     </nav>

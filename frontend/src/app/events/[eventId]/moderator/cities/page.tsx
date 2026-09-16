@@ -74,7 +74,7 @@ export default function ModeratorCitiesPage({ params }: { params: Promise<{ even
   function revealAndFinalize() {
     setConfirmState({
       title: "Reveal & finalize scores",
-      message: "Reveal all city multipliers and finalize scores? This is irreversible for this round — every team's final rank locks in.",
+      message: "Reveal all city multipliers and finalize scores? This is irreversible for this round - every team's final rank locks in.",
       confirmLabel: "Reveal & finalize",
       danger: true,
       onConfirm: () => call(`/api/events/${eventId}/cities/reveal`),
@@ -103,7 +103,7 @@ export default function ModeratorCitiesPage({ params }: { params: Promise<{ even
 
       {standings && standings.length > 0 && (
         <Panel className="w-full mb-4 border-2 border-yellow-400">
-          <PanelTitle>🏆 FINAL RESULTS</PanelTitle>
+          <PanelTitle>FINAL RESULTS</PanelTitle>
           <div className="overflow-x-auto">
             <table className="w-full text-white text-sm md:text-base">
               <thead>
@@ -142,7 +142,7 @@ export default function ModeratorCitiesPage({ params }: { params: Promise<{ even
             return (
               <div key={c.id} className="bg-[#764A21]/40 rounded-lg p-3 flex justify-between items-center text-white flex-wrap gap-2">
                 <span>
-                  {c.name} ({c.tier}) — {c.assignedTeamId ? `sold to ${overview.teams.find((t: any) => t.id === c.assignedTeamId)?.name}` : live ? "live" : "unsold"}
+                  {c.name} ({c.tier}) - {c.assignedTeamId ? `sold to ${overview.teams.find((t: any) => t.id === c.assignedTeamId)?.name}` : live ? "live" : "unsold"}
                 </span>
                 <div className="flex gap-2">
                   {!c.assignedTeamId && !live && (

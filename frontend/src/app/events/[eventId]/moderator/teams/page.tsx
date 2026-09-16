@@ -142,7 +142,7 @@ export default function ModeratorTeamsPage({ params }: { params: Promise<{ event
           <input
             value={teamPassword}
             onChange={(e) => setTeamPassword(e.target.value)}
-            placeholder="password (optional — auto-generated if left blank)"
+            placeholder="password (optional - auto-generated if left blank)"
             className="flex-1 min-w-64 px-3 py-2 rounded text-black"
           />
           <WoodButton variant="primary" onClick={createTeam} disabled={createBusy || !teamName || !teamUsername}>
@@ -151,7 +151,7 @@ export default function ModeratorTeamsPage({ params }: { params: Promise<{ event
         </div>
         {issuedCredential && (
           <div className="mt-3 bg-black/40 rounded p-3 text-sm">
-            <p className="text-yellow-300 font-bold">Shown once — write it down now:</p>
+            <p className="text-yellow-300 font-bold">Shown once - write it down now:</p>
             <p className="text-white">
               Username: <strong>{issuedCredential.username}</strong> · Password: <strong>{issuedCredential.password}</strong>
             </p>
@@ -167,7 +167,7 @@ export default function ModeratorTeamsPage({ params }: { params: Promise<{ event
           {overview.teams.map((t: any) => (
             <div key={t.id} className="bg-[#764A21]/40 rounded-lg p-3 text-white flex flex-wrap gap-3 items-center justify-between">
               <div>
-                <strong>{t.name}</strong> ({t.code}) — {t.status}
+                <strong>{t.name}</strong> ({t.code}) - {t.status}
                 <div className="text-sm text-white/80">
                   Tokens: {t.auctionTokens} · Wallet: {t.cityWalletTokens} · Trades: {t.tradeCount}
                 </div>
@@ -201,7 +201,7 @@ export default function ModeratorTeamsPage({ params }: { params: Promise<{ event
                   Reset password
                 </WoodButton>
                 <WoodButton variant="danger" disabled={busy} onClick={() => deleteTeam(t.id, t.name)}>
-                  🗑 Delete
+                  Delete
                 </WoodButton>
               </div>
             </div>

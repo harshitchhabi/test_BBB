@@ -152,10 +152,10 @@ export default function ModeratorAuctionPage({ params }: { params: Promise<{ eve
           </WoodButton>
         </div>
         <p className="text-white/50 text-xs mt-1">
-          Leave quantity blank to use the material's configured default — every lot in this round (one per active
+          Leave quantity blank to use the material's configured default - every lot in this round (one per active
           team) will contain this much of the material.
         </p>
-        {materials.length === 0 && <p className="text-yellow-300 text-sm mt-2">No materials found — has the event been seeded?</p>}
+        {materials.length === 0 && <p className="text-yellow-300 text-sm mt-2">No materials found - has the event been seeded?</p>}
       </Panel>
 
       {state.activeRound && (
@@ -164,14 +164,14 @@ export default function ModeratorAuctionPage({ params }: { params: Promise<{ eve
             ROUND {state.activeRound.sequence}: {state.activeRound.materialName ?? state.activeRound.materialKey}
           </PanelTitle>
           {state.activeRound.shock && (
-            <p className="text-yellow-300 mb-2">⚡ {state.activeRound.shock.title} — {state.activeRound.shock.description}</p>
+            <p className="text-yellow-300 mb-2">{state.activeRound.shock.title} - {state.activeRound.shock.description}</p>
           )}
           <p className="text-white mb-3">{state.pendingLotsCount} lot(s) still pending in this round.</p>
 
           {state.liveLot ? (
             <div className="bg-[#764A21]/40 rounded-lg p-3">
               <p className="text-white">
-                Live: lot #{state.liveLot.lotNumber} — opening {state.liveLot.openingBid}, next min {state.liveLot.nextMinimumBid}
+                Live: lot #{state.liveLot.lotNumber} - opening {state.liveLot.openingBid}, next min {state.liveLot.nextMinimumBid}
               </p>
               <p className="text-white/70 text-sm mb-2">Current highest: {state.liveLot.currentHighestBid ? state.liveLot.currentHighestBid.amount : "none"}</p>
               <div className="flex gap-2 flex-wrap">
@@ -197,7 +197,7 @@ export default function ModeratorAuctionPage({ params }: { params: Promise<{ eve
         <Panel className="w-full max-w-2xl mb-4">
           <PanelTitle>RECENT LOTS</PanelTitle>
           <p className="text-white/70 text-sm mb-2">
-            Something went wrong with one of these? Reopen it — this properly reverses the sale (refunds the
+            Something went wrong with one of these? Reopen it - this properly reverses the sale (refunds the
             winner's tokens, reverses the material grant) and puts it back up live. Close it again with no new
             bids to force it unsold instead.
           </p>
@@ -205,7 +205,7 @@ export default function ModeratorAuctionPage({ params }: { params: Promise<{ eve
             {state.recentLots.map((l) => (
               <div key={l.id} className="bg-[#764A21]/40 rounded-lg p-3 flex justify-between items-center text-white text-sm flex-wrap gap-2">
                 <span>
-                  Lot #{l.lotNumber} — {l.status}{l.winnerTeamName ? ` (won by ${l.winnerTeamName})` : ""}
+                  Lot #{l.lotNumber} - {l.status}{l.winnerTeamName ? ` (won by ${l.winnerTeamName})` : ""}
                 </span>
                 <WoodButton disabled={busy} onClick={() => reopenLot(l.id, l.lotNumber)}>
                   Reopen

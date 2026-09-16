@@ -19,9 +19,9 @@ import { ConfirmDialog, type ConfirmDialogState } from "@/components/theme/Confi
 const STAGE_LABELS: Record<string, string> = {
   setup: "Setup",
   lobby: "Lobby (teams can register)",
-  stage_1: "Stage 1 — Material Auction",
-  stage_2: "Stage 2 — Trade & Build",
-  stage_3: "Stage 3 — City Auction",
+  stage_1: "Stage 1 - Material Auction",
+  stage_2: "Stage 2 - Trade & Build",
+  stage_3: "Stage 3 - City Auction",
   scoring: "Scoring",
   completed: "Completed",
   paused: "Paused",
@@ -389,7 +389,7 @@ export default function ModeratorSetupPage({ params }: { params: Promise<{ event
 
       <Panel className="w-full max-w-lg mb-4">
         <PanelTitle>CHANGE MY PASSWORD</PanelTitle>
-        <p className="text-white/70 text-sm mb-3">Updates your own login — you stay signed in, no need to log back in.</p>
+        <p className="text-white/70 text-sm mb-3">Updates your own login - you stay signed in, no need to log back in.</p>
         <div className="flex gap-2 flex-wrap">
           <input
             type="password"
@@ -432,7 +432,7 @@ export default function ModeratorSetupPage({ params }: { params: Promise<{ event
               />
             )}
             <div className="flex gap-2 flex-wrap">
-              {nextOptions.length === 0 && <p className="text-white/70">This event is finished — no further stage changes.</p>}
+              {nextOptions.length === 0 && <p className="text-white/70">This event is finished - no further stage changes.</p>}
               {nextOptions.map((next) => (
                 <WoodButton
                   key={next}
@@ -454,7 +454,7 @@ export default function ModeratorSetupPage({ params }: { params: Promise<{ event
       <Panel className="w-full max-w-lg mb-4 border-2 border-red-800">
         <PanelTitle>FORCE JUMP TO ANY STAGE</PanelTitle>
         <p className="text-white/70 text-sm mb-3">
-          Skips the normal forward-only sequence — jump to any stage, forward or backward. Whatever auction round or
+          Skips the normal forward-only sequence - jump to any stage, forward or backward. Whatever auction round or
           city auction is currently live gets voided (its tokens/materials returned) rather than left dangling.
         </p>
         <div className="flex gap-2 flex-wrap mb-2">
@@ -487,7 +487,7 @@ export default function ModeratorSetupPage({ params }: { params: Promise<{ event
         <PanelTitle>RESET FOR A NEW ROUND</PanelTitle>
         <p className="text-white/70 text-sm mb-3">
           Permanently deletes every team, token balance, bid, trade, building, city assignment, and score for this
-          event — the same event id/link keeps working, ready for a brand new set of teams. Materials, recipes,
+          event - the same event id/link keeps working, ready for a brand new set of teams. Materials, recipes,
           city list, and settings are kept exactly as configured. This cannot be undone (though the audit log of
           the round you're ending is kept).
         </p>
@@ -524,7 +524,7 @@ export default function ModeratorSetupPage({ params }: { params: Promise<{ event
           <input
             value={staffPassword}
             onChange={(e) => setStaffPassword(e.target.value)}
-            placeholder="password (optional — auto-generated if left blank)"
+            placeholder="password (optional - auto-generated if left blank)"
             className="flex-1 min-w-64 px-3 py-2 rounded text-black"
           />
           <WoodButton variant="primary" onClick={addStaff} disabled={staffBusy || !staffName || !staffUsername}>
@@ -534,7 +534,7 @@ export default function ModeratorSetupPage({ params }: { params: Promise<{ event
         {message && <p className="text-red-100 bg-red-950/80 px-3 py-2 rounded-md font-medium mt-3">{message}</p>}
         {issuedCredential && (
           <div className="mt-3 bg-black/40 rounded p-3 text-sm">
-            <p className="text-yellow-300 font-bold">Shown once — write it down now:</p>
+            <p className="text-yellow-300 font-bold">Shown once - write it down now:</p>
             <p className="text-white">
               Username: <strong>{issuedCredential.username}</strong> · Password: <strong>{issuedCredential.password}</strong>
             </p>
@@ -563,10 +563,10 @@ export default function ModeratorSetupPage({ params }: { params: Promise<{ event
         )}
       </Panel>
 
-      <Panel className="w-full max-w-lg mt-4 border-2 border-yellow-600">
+      <Panel id="rules-settings" className="w-full max-w-lg mt-4 border-2 border-yellow-600 scroll-mt-4">
         <PanelTitle>EDIT RULES TEXT</PanelTitle>
         <p className="text-white/70 text-sm mb-3">
-          Free text shown at the top of the Rules page for every team — announcements, house rules, anything the
+          Free text shown at the top of the Rules page for every team - announcements, house rules, anything the
           numbers on the Rules page don&apos;t cover. This is purely what&apos;s displayed: saving it can never change
           how the game actually plays out.
         </p>
@@ -593,7 +593,7 @@ export default function ModeratorSetupPage({ params }: { params: Promise<{ event
       <Panel className="w-full max-w-lg mt-4 border-2 border-red-800">
         <PanelTitle>GAME SETTINGS</PanelTitle>
         <p className="text-white/70 text-sm mb-3">
-          These numbers are read by the actual game engine — changing and saving them here changes how the event
+          These numbers are read by the actual game engine - changing and saving them here changes how the event
           plays out (starting tokens, tax rates, durations, and so on), not just what&apos;s displayed. Separate from
           the rules text above on purpose.
         </p>

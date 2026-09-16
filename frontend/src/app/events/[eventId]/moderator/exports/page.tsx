@@ -42,7 +42,7 @@ export default function ModeratorExportsPage({ params }: { params: Promise<{ eve
         {loadError && <p className="text-red-100 bg-red-950/80 px-3 py-2 rounded-md font-medium">{loadError}</p>}
         {!loadError && !standings && <p className="text-white/70">Loading…</p>}
         {!loadError && standings && standings.length === 0 && (
-          <p className="text-white/70">No final scores yet — reveal cities on the Stage 3 Cities screen first.</p>
+          <p className="text-white/70">No final scores yet - reveal cities on the Stage 3 Cities screen first.</p>
         )}
         {standings && standings.length > 0 && (
           <div className="overflow-x-auto">

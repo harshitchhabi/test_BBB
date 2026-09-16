@@ -72,7 +72,7 @@ export default function ModeratorBuildingsPage({ params }: { params: Promise<{ e
         <div className="space-y-2">
           {buildings.map((b) => (
             <div key={b.id} className="bg-[#764A21]/40 rounded-lg p-3 flex justify-between items-center text-white">
-              <span>{b.deedNumber} — {b.teamName} — {b.recipeName}</span>
+              <span>{b.deedNumber} - {b.teamName} - {b.recipeName}</span>
               <span>{b.basePoints + b.ecoBonus + b.luxuryBonus + b.landmarkBonus} pts ({b.status})</span>
               {b.status === "approved" && (
                 <WoodButton variant="danger" disabled={busy} onClick={() => call(`/api/events/${eventId}/buildings/${b.id}/void`, { reason: "Voided by moderator." })}>

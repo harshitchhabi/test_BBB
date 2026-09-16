@@ -357,3 +357,50 @@ describe("Inspections", () => {
     expect(totalReturned).toBe(50);
   });
 });
+
+describe("Cross-team material visibility (getAllTeamsInventory)", () => {
+  it("lists every team's non-zero materials, but never a team's token balance or score", async () => {
+    const { event, teamA, teamB, materials } = await createStage2Fixture(dbModule.db);
+    await grantInventory(dbModule.db, event.id, teamA.team.id, materials.bricks.id, 50);
+    await grantInventory(dbModule.db, event.id, teamA.team.id, materials.cement.id, 20);
+    await grantInventory(dbModule.db, event.id, teamB.team.id, materials.wood.id, 40);
+
+    const summaries = await engine.getAllTeamsInventory(event.id);
+    expect(summaries).toHaveLength(2);
+
+    const teamASummary = summaries.find((s: any) => s.teamId === teamA.team.id);
+    const teamBSummary = summaries.find((s: any) => s.teamId === teamB.team.id);
+
+    expect(teamASummary.materials.map((m: any) => m.materialKey).sort()).toEqual(["bricks", "cement"]);
+    expect(teamASummary.materials.find((m: any) => m.materialKey === "bricks").quantity).toBe(50);
+    expect(teamBSummary.materials.map((m: any) => m.materialKey)).toEqual(["wood"]);
+
+    // No token balance, no score field anywhere in the shape — this is a
+    // deliberately narrower view than staff-only inventory access, and it
+    // must stay narrow even as the summary shape evolves.
+    expect(teamASummary).not.toHaveProperty("auctionTokens");
+    expect(teamASummary).not.toHaveProperty("cityWalletTokens");
+    expect(teamASummary).not.toHaveProperty("finalScore");
+  });
+
+  it("lists a team with zero materials as present but empty, not omitted", async () => {
+    const { event, teamA, teamB, materials } = await createStage2Fixture(dbModule.db);
+    await grantInventory(dbModule.db, event.id, teamA.team.id, materials.bricks.id, 10);
+    // teamB never granted anything.
+
+    const summaries = await engine.getAllTeamsInventory(event.id);
+    const teamBSummary = summaries.find((s: any) => s.teamId === teamB.team.id);
+    expect(teamBSummary).toBeDefined();
+    expect(teamBSummary.materials).toEqual([]);
+  });
+
+  it("nets a material down to zero (fully traded away) out of the visible list, not shown as a phantom 0", async () => {
+    const { event, teamA, materials } = await createStage2Fixture(dbModule.db);
+    await grantInventory(dbModule.db, event.id, teamA.team.id, materials.bricks.id, 10);
+    await grantInventory(dbModule.db, event.id, teamA.team.id, materials.bricks.id, -10); // fully spent/traded away
+
+    const summaries = await engine.getAllTeamsInventory(event.id);
+    const teamASummary = summaries.find((s: any) => s.teamId === teamA.team.id);
+    expect(teamASummary.materials.find((m: any) => m.materialKey === "bricks")).toBeUndefined();
+  });
+});

@@ -13,7 +13,7 @@ import { verifySessionParticipant } from "game-engine";
 // cookie for the same login, even though the cookie itself hasn't
 // "expired" yet.
 const COOKIE_NAME = "bbb_session";
-const MAX_AGE_SECONDS = 30 * 24 * 60 * 60; // 30 days — matches "a shared team login stays signed in for the event"
+const MAX_AGE_SECONDS = 30 * 24 * 60 * 60; // 30 days - matches "a shared team login stays signed in for the event"
 
 function secret(): string {
   const value = process.env.SESSION_SECRET;

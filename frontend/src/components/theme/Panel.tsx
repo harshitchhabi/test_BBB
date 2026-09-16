@@ -2,8 +2,8 @@
 // sit inside (cart/page.tsx's "Token Balance Panel" / "Won Auctions
 // Panel", BidClient's auction/bidding cards): bg-[#978056]/37, rounded-xl,
 // shadow-lg.
-export function Panel({ children, className = "" }: { children: React.ReactNode; className?: string }) {
-  return <div className={`w-full bg-[#978056]/37 rounded-xl shadow-lg p-4 md:p-6 ${className}`}>{children}</div>;
+export function Panel({ children, className = "", id }: { children: React.ReactNode; className?: string; id?: string }) {
+  return <div id={id} className={`w-full bg-[#978056]/37 rounded-xl shadow-lg p-4 md:p-6 ${className}`}>{children}</div>;
 }
 
 export function PanelTitle({ children }: { children: React.ReactNode }) {
