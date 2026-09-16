@@ -89,8 +89,8 @@ export default function TradeBuildPage({ params }: { params: Promise<{ eventId: 
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ proposerTeamId: overview.myTeam.id, counterpartyTeamId, lines }),
       });
-      const body = await res.json();
-      if (!res.ok) setMessage(body.message);
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) setMessage(body.message ?? `Something went wrong (${res.status}). Please try again.`);
       else {
         setTradeLines([{ fromMe: true, materialTypeId: "", quantity: "" }]);
         refresh();
@@ -106,8 +106,8 @@ export default function TradeBuildPage({ params }: { params: Promise<{ eventId: 
     setMessage(null);
     try {
       const res = await fetch(`/api/events/${eventId}/trades/${tradeId}/${action}`, { method: "POST" });
-      const body = await res.json();
-      if (!res.ok) setMessage(body.message);
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) setMessage(body.message ?? `Something went wrong (${res.status}). Please try again.`);
       else refresh();
     } finally {
       setBusy(false);
@@ -124,8 +124,8 @@ export default function TradeBuildPage({ params }: { params: Promise<{ eventId: 
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ teamId: overview.myTeam.id, recipeId, bonuses }),
       });
-      const body = await res.json();
-      if (!res.ok) setMessage(body.message);
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) setMessage(body.message ?? `Something went wrong (${res.status}). Please try again.`);
       else refresh();
     } finally {
       setBusy(false);

@@ -404,3 +404,18 @@ describe("Cross-team material visibility (getAllTeamsInventory)", () => {
     expect(teamASummary.materials.find((m: any) => m.materialKey === "bricks")).toBeUndefined();
   });
 });
+
+describe("Bank stock exposes each material's configured defaults", () => {
+  it("includes defaultLotQuantity and defaultOpeningBid alongside the existing bank-stock fields", async () => {
+    // Regression coverage for the moderator "Start a round" screen, which
+    // needs to show a material's configured lot size/opening bid before
+    // the moderator decides whether to override either one.
+    const { event, materials } = await createStage2Fixture(dbModule.db);
+    const stock = await engine.getBankStock(event.id);
+    const bricksRow = stock.find((s: any) => s.materialTypeId === materials.bricks.id);
+    expect(bricksRow).toBeDefined();
+    expect(bricksRow.defaultLotQuantity).toBe(100); // set by createStage2Fixture
+    expect(bricksRow.defaultOpeningBid).toBe(100);
+    expect(Number(bricksRow.availableQuantity)).toBe(0); // unaffected by the new fields
+  });
+});

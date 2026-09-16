@@ -17,6 +17,7 @@ export interface AuctionStateResponse {
     lotNumber: number;
     materialKey?: string;
     materialName?: string;
+    quantity: number | null;
     openingBid: number;
     minimumRaise: number;
     closesAt: string | null;

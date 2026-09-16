@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db, eq, and, ne, desc, sql } from "db";
-import { events, auctionRounds, auctionLots, bids, materialTypes, teams, marketShockCards } from "db/schema";
+import { events, auctionRounds, auctionLots, bids, materialTypes, materialLots, teams, marketShockCards } from "db/schema";
 import { getParticipantContext } from "game-engine";
 import { isStaff } from "common";
 import { requireParticipant, apiErrorResponse } from "@/lib/api";
@@ -41,6 +41,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ eventId
       lotNumber: number;
       materialKey?: string;
       materialName?: string;
+      quantity: number | null;
       openingBid: number;
       minimumRaise: number;
       closesAt: Date | null;
@@ -80,11 +81,14 @@ export async function GET(_req: Request, { params }: { params: Promise<{ eventId
             .from(bids)
             .where(and(eq(bids.auctionLotId, lot.id), eq(bids.status, "winning")));
 
+          const [materialLot] = await db.select({ quantity: materialLots.quantity }).from(materialLots).where(eq(materialLots.id, lot.materialLotId));
+
           liveLot = {
             id: lot.id,
             lotNumber: lot.lotNumber,
             materialKey: material?.key,
             materialName: material?.name,
+            quantity: materialLot?.quantity ?? null,
             openingBid: lot.openingBid,
             minimumRaise: lot.minimumRaise,
             closesAt: lot.closesAt,

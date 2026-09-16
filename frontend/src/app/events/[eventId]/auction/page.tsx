@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useCallback, useEffect, useState } from "react";
+import { use, useCallback, useEffect, useRef, useState } from "react";
 import { useSession } from "@/lib/use-session";
 import { useEventSocket } from "@/lib/use-event-socket";
 import type { AuctionStateResponse } from "@/lib/auction-state-types";
@@ -44,14 +44,26 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ eventId:
   // only ever land on a value the server would actually accept (the
   // current minimum, or that plus whole minimumRaise increments), so
   // there's no way to fat-finger a bid that's rejected as "too low" or
-  // one far above what was intended. Resets to the fresh minimum
-  // whenever the lot changes or someone else's bid moves that minimum
-  // up past whatever this team had stepped to.
+  // one far above what was intended.
+  //
+  // Two different reasons to reset, handled separately: a brand NEW lot
+  // (lotId changed) always resets to its own fresh minimum, even if
+  // that's LOWER than whatever this team had stepped to on the previous
+  // lot — a bug fixed here, since the old version only clamped upward
+  // and left the stepper stuck showing the previous lot's higher amount.
+  // Within the SAME lot, it only clamps up when someone else's bid moves
+  // nextMinimumBid past whatever this team had stepped to.
+  const liveLotIdRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!state?.liveLot) return;
+    if (!state?.liveLot) {
+      liveLotIdRef.current = null;
+      return;
+    }
+    const isNewLot = liveLotIdRef.current !== state.liveLot.id;
+    liveLotIdRef.current = state.liveLot.id;
     setBidAmount((prev) => {
       const prevNum = Number(prev);
-      if (!prev || !Number.isFinite(prevNum) || prevNum < state.liveLot!.nextMinimumBid) {
+      if (isNewLot || !prev || !Number.isFinite(prevNum) || prevNum < state.liveLot!.nextMinimumBid) {
         return String(state.liveLot!.nextMinimumBid);
       }
       return prev;
@@ -100,8 +112,8 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ eventId:
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ teamId: state.myTeamId, amount: Number(bidAmount) }),
       });
-      const body = await res.json();
-      if (!res.ok) setError(body.message ?? "Bid rejected.");
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) setError(body.message ?? `Bid rejected (${res.status}).`);
       else {
         setBidAmount("");
         refresh();
@@ -171,15 +183,22 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ eventId:
               <h2 className="text-2xl font-semibold text-[#FDE047] text-outline-black tracking-wide mb-6">PLACE YOUR BID</h2>
               <p className="text-[#F1EBB5] mb-2">
                 Lot #{state.liveLot.lotNumber} - {state.liveLot.materialName ?? state.liveLot.materialKey}
+                {state.liveLot.quantity != null && <span className="text-yellow-300"> ({state.liveLot.quantity} units in this lot)</span>}
                 {(() => {
                   const held = inventory.find((i: any) => i.materialKey === state.liveLot!.materialKey)?.quantity ?? 0;
-                  return held > 0 ? <span className="text-yellow-300"> (you already hold {held})</span> : null;
+                  return held > 0 ? <span className="text-yellow-300"> - you already hold {held}</span> : null;
                 })()}
               </p>
               <div className="bg-white/20 border border-black rounded-lg p-4 mb-4">
                 <p className="text-lg text-black font-bold">
                   {state.liveLot.currentHighestBid ? `₹${state.liveLot.currentHighestBid.amount}` : "No bids yet"}
                 </p>
+                {state.liveLot.currentHighestBid && (
+                  <p className="text-black/80 text-sm font-semibold">
+                    Currently winning: {state.teams.find((t) => t.id === state.liveLot!.currentHighestBid!.teamId)?.name ?? "Unknown team"}
+                    {state.liveLot.currentHighestBid.teamId === state.myTeamId ? " (you)" : ""}
+                  </p>
+                )}
                 <p className="text-black/70 text-sm">Opening bid: ₹{state.liveLot.openingBid} · Next minimum: ₹{state.liveLot.nextMinimumBid}</p>
               </div>
 

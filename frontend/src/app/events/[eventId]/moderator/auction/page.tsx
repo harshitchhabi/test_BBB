@@ -19,7 +19,9 @@ export default function ModeratorAuctionPage({ params }: { params: Promise<{ eve
   const { status } = useSession();
   const [state, setState] = useState<AuctionStateResponse | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [materials, setMaterials] = useState<Array<{ materialTypeId: string; materialName: string }>>([]);
+  const [materials, setMaterials] = useState<
+    Array<{ materialTypeId: string; materialName: string; defaultLotQuantity?: number; defaultOpeningBid?: number }>
+  >([]);
   const [materialTypeId, setMaterialTypeId] = useState("");
   const [lotQuantity, setLotQuantity] = useState("");
   const [message, setMessage] = useState<string | null>(null);
@@ -122,8 +124,11 @@ export default function ModeratorAuctionPage({ params }: { params: Promise<{ eve
         <div className="flex gap-2 flex-wrap">
           <select value={materialTypeId} onChange={(e) => setMaterialTypeId(e.target.value)} className="flex-1 min-w-40 px-3 py-2 rounded text-black">
             <option value="">Choose a material…</option>
-            {materials.map((m) => (
-              <option key={m.materialTypeId} value={m.materialTypeId}>{m.materialName}</option>
+            {materials.map((m: any) => (
+              <option key={m.materialTypeId} value={m.materialTypeId}>
+                {m.materialName}
+                {m.defaultLotQuantity != null ? ` (default ${m.defaultLotQuantity}/lot, opens at ${m.defaultOpeningBid})` : ""}
+              </option>
             ))}
           </select>
           <input
@@ -131,8 +136,12 @@ export default function ModeratorAuctionPage({ params }: { params: Promise<{ eve
             min={1}
             value={lotQuantity}
             onChange={(e) => setLotQuantity(e.target.value)}
-            placeholder="Qty per lot (default)"
-            className="w-40 px-3 py-2 rounded text-black"
+            placeholder={
+              materialTypeId
+                ? `Qty per lot (default ${materials.find((m: any) => m.materialTypeId === materialTypeId)?.defaultLotQuantity ?? "?"})`
+                : "Qty per lot (default)"
+            }
+            className="w-56 px-3 py-2 rounded text-black"
           />
           <WoodButton
             variant="primary"
@@ -172,8 +181,13 @@ export default function ModeratorAuctionPage({ params }: { params: Promise<{ eve
             <div className="bg-[#764A21]/40 rounded-lg p-3">
               <p className="text-white">
                 Live: lot #{state.liveLot.lotNumber} - opening {state.liveLot.openingBid}, next min {state.liveLot.nextMinimumBid}
+                {state.liveLot.quantity != null && ` - ${state.liveLot.quantity} units`}
               </p>
-              <p className="text-white/70 text-sm mb-2">Current highest: {state.liveLot.currentHighestBid ? state.liveLot.currentHighestBid.amount : "none"}</p>
+              <p className="text-white/70 text-sm mb-2">
+                Current highest: {state.liveLot.currentHighestBid
+                  ? `${state.liveLot.currentHighestBid.amount} (${state.teams.find((t) => t.id === state.liveLot!.currentHighestBid!.teamId)?.name ?? "unknown team"})`
+                  : "none"}
+              </p>
               <div className="flex gap-2 flex-wrap">
                 <WoodButton variant="danger" disabled={busy} onClick={() => call(`/api/events/${eventId}/auction-lots/${state.liveLot!.id}/close`, { reason: "Moderator closed the lot." })}>
                   Close lot

@@ -29,6 +29,15 @@ export async function getBankStock(eventId: string) {
       materialKey: materialTypes.key,
       materialName: materialTypes.name,
       isRare: materialTypes.isRare,
+      // Not "bank stock" in the Stage 2 sense - these two ride along here
+      // because this is already the cheapest endpoint with every
+      // material's {id, name} (see moderator/auction/page.tsx's "START A
+      // ROUND" material picker) - the moderator needs to see the
+      // material's configured defaults before deciding whether to
+      // override them via startRound's openingBidOverride/
+      // lotQuantityOverride.
+      defaultLotQuantity: materialTypes.defaultLotQuantity,
+      defaultOpeningBid: materialTypes.defaultOpeningBid,
       availableQuantity: sql<number>`coalesce(sum(${materialLots.quantity}), 0)`,
     })
     .from(materialTypes)
@@ -37,7 +46,7 @@ export async function getBankStock(eventId: string) {
       and(eq(materialLots.materialTypeId, materialTypes.id), eq(materialLots.status, "bank_stock")),
     )
     .where(eq(materialTypes.eventId, eventId))
-    .groupBy(materialTypes.id, materialTypes.key, materialTypes.name, materialTypes.isRare);
+    .groupBy(materialTypes.id, materialTypes.key, materialTypes.name, materialTypes.isRare, materialTypes.defaultLotQuantity, materialTypes.defaultOpeningBid);
 }
 
 export async function purchaseFromBank(params: {

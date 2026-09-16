@@ -88,8 +88,8 @@ export default function ModeratorTeamsPage({ params }: { params: Promise<{ event
             headers: { "content-type": "application/json" },
             body: JSON.stringify({ reason }),
           });
-          const body = await res.json();
-          if (!res.ok) setMessage(body.message);
+          const body = await res.json().catch(() => ({}));
+          if (!res.ok) setMessage(body.message ?? `Something went wrong (${res.status}). Please try again.`);
           else setIssuedCredential({ username: body.username, password: body.password });
         } finally {
           setBusy(false);
@@ -109,9 +109,9 @@ export default function ModeratorTeamsPage({ params }: { params: Promise<{ event
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ name: teamName, username: teamUsername, password: teamPassword || undefined }),
       });
-      const body = await res.json();
+      const body = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setMessage(body.message);
+        setMessage(body.message ?? `Something went wrong (${res.status}). Please try again.`);
       } else {
         setIssuedCredential({ username: body.username, password: body.password });
         setTeamName("");

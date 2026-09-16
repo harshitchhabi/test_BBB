@@ -82,9 +82,9 @@ function HomeContent() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ username, password }),
       });
-      const body = await res.json();
+      const body = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setLoginError(body.message ?? "Sign-in failed.");
+        setLoginError(body.message ?? `Sign-in failed (${res.status}). Please try again.`);
         return;
       }
       setPassword("");

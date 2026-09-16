@@ -75,8 +75,8 @@ export default function CityAuctionPage({ params }: { params: Promise<{ eventId:
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ teamId: overview.myTeam.id, amount: Number(bidAmount) }),
       });
-      const body = await res.json();
-      if (!res.ok) setMessage(body.message);
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) setMessage(body.message ?? `Something went wrong (${res.status}). Please try again.`);
       else {
         setBidAmount("");
         refresh();
@@ -96,8 +96,8 @@ export default function CityAuctionPage({ params }: { params: Promise<{ eventId:
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ teamId: overview.myTeam.id, cityId }),
       });
-      const body = await res.json();
-      if (!res.ok) setMessage(body.message);
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) setMessage(body.message ?? `Something went wrong (${res.status}). Please try again.`);
       else refresh();
     } finally {
       setBusy(false);

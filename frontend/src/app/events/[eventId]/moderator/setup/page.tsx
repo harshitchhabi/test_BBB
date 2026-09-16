@@ -196,8 +196,8 @@ export default function ModeratorSetupPage({ params }: { params: Promise<{ event
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ customRulesNote: typeof settingsForm.customRulesNote === "string" ? settingsForm.customRulesNote : "" }),
       });
-      const body = await res.json();
-      if (!res.ok) setSettingsMessage(body.message);
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) setSettingsMessage(body.message ?? `Something went wrong (${res.status}). Please try again.`);
       else {
         setSettingsMessage("Rules text saved.");
         refresh();
@@ -230,8 +230,8 @@ export default function ModeratorSetupPage({ params }: { params: Promise<{ event
         headers: { "content-type": "application/json" },
         body: JSON.stringify(updates),
       });
-      const body = await res.json();
-      if (!res.ok) setGameSettingsMessage(body.message);
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) setGameSettingsMessage(body.message ?? `Something went wrong (${res.status}). Please try again.`);
       else {
         setGameSettingsMessage("Game settings saved.");
         refresh();
@@ -282,9 +282,9 @@ export default function ModeratorSetupPage({ params }: { params: Promise<{ event
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ name: staffName, username: staffUsername, password: staffPassword || undefined }),
       });
-      const body = await res.json();
+      const body = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setMessage(body.message);
+        setMessage(body.message ?? `Something went wrong (${res.status}). Please try again.`);
       } else {
         setIssuedCredential({ username: body.username, password: body.password });
         setStaffName("");
@@ -308,8 +308,8 @@ export default function ModeratorSetupPage({ params }: { params: Promise<{ event
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ status: nextStatus, reason: needsReason ? pauseReason || "Paused by moderator." : undefined }),
       });
-      const body = await res.json();
-      if (!res.ok) setStageMessage(body.message);
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) setStageMessage(body.message ?? `Something went wrong (${res.status}). Please try again.`);
       else {
         setPauseReason("");
         refresh();
@@ -329,8 +329,8 @@ export default function ModeratorSetupPage({ params }: { params: Promise<{ event
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ reason: resetReason }),
       });
-      const body = await res.json();
-      if (!res.ok) setResetMessage(body.message);
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) setResetMessage(body.message ?? `Something went wrong (${res.status}). Please try again.`);
       else {
         setResetReason("");
         setResetConfirmed(false);
@@ -356,8 +356,8 @@ export default function ModeratorSetupPage({ params }: { params: Promise<{ event
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ status: forceTarget, reason: forceReason, force: true }),
       });
-      const body = await res.json();
-      if (!res.ok) setForceMessage(body.message);
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) setForceMessage(body.message ?? `Something went wrong (${res.status}). Please try again.`);
       else {
         setForceTarget("");
         setForceReason("");
