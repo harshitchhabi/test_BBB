@@ -4,6 +4,7 @@ import { use, useCallback, useEffect, useState } from "react";
 import { useSession } from "@/lib/use-session";
 import { useEventSocket } from "@/lib/use-event-socket";
 import { fetchJson, FetchJsonError } from "@/lib/fetch-json";
+import { fetchEventOverviewFresh } from "@/lib/use-event-overview";
 import { TeamNav } from "../team-nav";
 import { PageFrame } from "@/components/theme/PageFrame";
 import { HeaderBanner } from "@/components/theme/HeaderBanner";
@@ -30,7 +31,7 @@ export default function CityAuctionPage({ params }: { params: Promise<{ eventId:
       // Independent requests fired together — see the same note on the
       // Trade & Build screen's refresh().
       const [ov, c, a] = await Promise.all([
-        fetchJson<any>(`/api/events/${eventId}/overview`),
+        fetchEventOverviewFresh(eventId) as Promise<any>,
         fetchJson<any>(`/api/events/${eventId}/cities`),
         fetchJson<any>(`/api/events/${eventId}/city-auctions/list`),
       ]);
@@ -139,7 +140,7 @@ export default function CityAuctionPage({ params }: { params: Promise<{ eventId:
           </p>
           {liveAuction.closesAt && (
             <p className={`mb-2 font-bold ${secondsLeft <= 10 ? "text-red-400" : "text-yellow-300"}`}>
-              ⏱ {Math.floor(secondsLeft / 60)}:{(secondsLeft % 60).toString().padStart(2, "0")}
+              Time remaining: {Math.floor(secondsLeft / 60)}:{(secondsLeft % 60).toString().padStart(2, "0")}
             </p>
           )}
           {overview.myRole === "leader" && !myCity && !timerExpired ? (

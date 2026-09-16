@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { FetchJsonError } from "./fetch-json";
 
 // Task 6 fixed the WebSocket-per-navigation lag; its own commit note
 // flagged this smaller sibling and deliberately left it unfixed at the
@@ -26,32 +27,67 @@ const CACHE_TTL_MS = 2000;
 interface CacheEntry {
   data: unknown;
   fetchedAt: number;
+  // Always the RAW fetch promise (throws FetchJsonError on failure,
+  // resolves with the parsed body on success) - never an
+  // already-error-handled wrapper. Two different consumers (the
+  // swallow-to-null hook below, and the throwing fetchEventOverviewFresh)
+  // each apply their OWN .then/.catch on top of this same shared
+  // promise, so joining an in-flight request never silently changes
+  // which error contract a caller gets.
   promise: Promise<unknown> | null;
 }
 
 const cache = new Map<string, CacheEntry>();
 
-function fetchOverview(eventId: string): Promise<unknown> {
+async function fetchOverviewRaw(eventId: string): Promise<unknown> {
+  const res = await fetch(`/api/events/${eventId}/overview`);
+  const body = await res.json().catch(() => null);
+  if (!res.ok) throw new FetchJsonError(body?.message ?? `Request failed (${res.status}).`, res.status);
+  return body;
+}
+
+// Returns the shared in-flight/cached raw promise for this eventId,
+// starting a new network request only when neither applies.
+// useFreshnessWindow controls whether an already-resolved, still-fresh
+// cache entry can be returned WITHOUT a new request - true for the
+// passive nav-bar poll (useEventOverview), false for a page's own
+// refresh() (fetchEventOverviewFresh), which always wants current data
+// and only ever piggybacks on a request that's genuinely still in flight.
+function getOverviewPromise(eventId: string, useFreshnessWindow: boolean): Promise<unknown> {
   const entry = cache.get(eventId);
-  if (entry) {
-    const fresh = Date.now() - entry.fetchedAt < CACHE_TTL_MS;
-    if (fresh && !entry.promise) return Promise.resolve(entry.data);
-    if (entry.promise) return entry.promise;
+  if (entry?.promise) return entry.promise;
+  if (useFreshnessWindow && entry && Date.now() - entry.fetchedAt < CACHE_TTL_MS) {
+    return Promise.resolve(entry.data);
   }
 
-  const promise = fetch(`/api/events/${eventId}/overview`)
-    .then((r) => (r.ok ? r.json() : null))
-    .then((data) => {
-      cache.set(eventId, { data, fetchedAt: Date.now(), promise: null });
-      return data;
-    })
-    .catch(() => {
-      cache.delete(eventId);
-      return null;
-    });
+  const promise = fetchOverviewRaw(eventId).then((data) => {
+    cache.set(eventId, { data, fetchedAt: Date.now(), promise: null });
+    return data;
+  });
+  // Errors clear the in-flight slot too (via the shared promise's own
+  // rejection reaching here through the same microtask), so the next
+  // caller retries instead of being stuck joining a dead promise.
+  promise.catch(() => cache.delete(eventId));
 
   cache.set(eventId, { data: entry?.data ?? null, fetchedAt: entry?.fetchedAt ?? 0, promise });
   return promise;
+}
+
+// For every page's own refresh() (not just TeamNav/ModNav): the pages
+// themselves still independently GET /overview too, so a page and its
+// nav bar fetch it twice on every single navigation - the actual
+// remaining "lag switching pages" after Task 6's WebSocket fix above.
+// This joins an ALREADY-IN-FLIGHT request the same way the hook's cache
+// does, but never serves the freshness-window cache hit - a page's own
+// refresh() (on mount, on a WS broadcast, or right after its own
+// mutation) needs the current truth, not up-to-2-second-old data from a
+// passive nav-bar poll; only two calls landing in the same tick should
+// ever share one network round trip. Throws FetchJsonError on failure,
+// same contract as fetch-json.ts's fetchJson, so every page's existing
+// `catch (err) { err instanceof FetchJsonError ? ... }` error handling
+// keeps working unchanged when swapped in for a raw fetchJson call.
+export function fetchEventOverviewFresh(eventId: string): Promise<unknown> {
+  return getOverviewPromise(eventId, false);
 }
 
 // Returns the same shape /overview's route already returns
@@ -65,9 +101,15 @@ export function useEventOverview(eventId: string | null) {
   useEffect(() => {
     if (!eventId) return;
     let cancelled = false;
-    fetchOverview(eventId).then((data) => {
-      if (!cancelled) setOverview(data);
-    });
+    getOverviewPromise(eventId, true)
+      .then((data) => {
+        if (!cancelled) setOverview(data);
+      })
+      .catch(() => {
+        // No error UI of its own to show - matches this hook's
+        // pre-existing swallow-to-null behavior.
+        if (!cancelled) setOverview(null);
+      });
     return () => {
       cancelled = true;
     };

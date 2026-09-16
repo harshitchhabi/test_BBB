@@ -4,6 +4,7 @@ import { use, useCallback, useEffect, useState } from "react";
 import { useSession } from "@/lib/use-session";
 import { useEventSocket } from "@/lib/use-event-socket";
 import { fetchJson, FetchJsonError } from "@/lib/fetch-json";
+import { fetchEventOverviewFresh } from "@/lib/use-event-overview";
 import { ModNav } from "../mod-nav";
 import { PageFrame } from "@/components/theme/PageFrame";
 import { HeaderBanner } from "@/components/theme/HeaderBanner";
@@ -25,11 +26,22 @@ export default function ModeratorCitiesPage({ params }: { params: Promise<{ even
   const [standings, setStandings] = useState<any[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [confirmState, setConfirmState] = useState<ConfirmDialogState | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+
+  // Same reasoning as the Stage 1 moderator console's timer: deciding
+  // when to step in and close a city auction manually previously meant
+  // tabbing over to the team-facing screen just to see the countdown.
+  const anyLive = auctions.some((a) => a.status === "live" && a.closesAt);
+  useEffect(() => {
+    if (!anyLive) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [anyLive]);
 
   const refresh = useCallback(async () => {
     try {
       const [ov, c, a] = await Promise.all([
-        fetchJson<any>(`/api/events/${eventId}/overview`),
+        fetchEventOverviewFresh(eventId) as Promise<any>,
         fetchJson<any>(`/api/events/${eventId}/cities`),
         fetchJson<any>(`/api/events/${eventId}/city-auctions/list`),
       ]);
@@ -143,6 +155,14 @@ export default function ModeratorCitiesPage({ params }: { params: Promise<{ even
               <div key={c.id} className="bg-[#764A21]/40 rounded-lg p-3 flex justify-between items-center text-white flex-wrap gap-2">
                 <span>
                   {c.name} ({c.tier}) - {c.assignedTeamId ? `sold to ${overview.teams.find((t: any) => t.id === c.assignedTeamId)?.name}` : live ? "live" : "unsold"}
+                  {live?.closesAt && (() => {
+                    const secondsLeft = Math.max(0, Math.round((new Date(live.closesAt).getTime() - now) / 1000));
+                    return (
+                      <span className={`ml-2 font-bold ${secondsLeft <= 10 ? "text-red-400" : "text-yellow-300"}`}>
+                        ({Math.floor(secondsLeft / 60)}:{(secondsLeft % 60).toString().padStart(2, "0")})
+                      </span>
+                    );
+                  })()}
                 </span>
                 <div className="flex gap-2">
                   {!c.assignedTeamId && !live && (

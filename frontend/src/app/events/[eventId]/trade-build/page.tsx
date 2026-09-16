@@ -4,6 +4,7 @@ import { use, useCallback, useEffect, useState } from "react";
 import { useSession } from "@/lib/use-session";
 import { useEventSocket } from "@/lib/use-event-socket";
 import { fetchJson, FetchJsonError } from "@/lib/fetch-json";
+import { fetchEventOverviewFresh } from "@/lib/use-event-overview";
 import { TeamNav } from "../team-nav";
 import { PageFrame } from "@/components/theme/PageFrame";
 import { HeaderBanner } from "@/components/theme/HeaderBanner";
@@ -41,7 +42,7 @@ export default function TradeBuildPage({ params }: { params: Promise<{ eventId: 
       // four, which matters a lot given this refresh reruns on every
       // WebSocket broadcast (any team's bid, trade, or build).
       const [ov, materials, rec, tr, ti] = await Promise.all([
-        fetchJson<any>(`/api/events/${eventId}/overview`),
+        fetchEventOverviewFresh(eventId) as Promise<any>,
         fetchJson<any>(`/api/events/${eventId}/bank-stock`),
         fetchJson<any>(`/api/events/${eventId}/recipes`),
         fetchJson<any>(`/api/events/${eventId}/trades/list`),

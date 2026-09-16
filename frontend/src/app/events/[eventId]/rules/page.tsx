@@ -2,7 +2,8 @@
 
 import { use, useEffect, useState } from "react";
 import { useSession } from "@/lib/use-session";
-import { fetchJson, FetchJsonError } from "@/lib/fetch-json";
+import { FetchJsonError } from "@/lib/fetch-json";
+import { fetchEventOverviewFresh } from "@/lib/use-event-overview";
 import { TeamNav } from "../team-nav";
 import { PageFrame } from "@/components/theme/PageFrame";
 
@@ -28,7 +29,7 @@ export default function RulesPage({ params }: { params: Promise<{ eventId: strin
 
   useEffect(() => {
     if (status === "authenticated") {
-      fetchJson<any>(`/api/events/${eventId}/overview`)
+      fetchEventOverviewFresh(eventId)
         .then(setOverview)
         .catch((err) => setLoadError(err instanceof FetchJsonError ? err.message : "Couldn't load the rules. Retrying…"));
     }

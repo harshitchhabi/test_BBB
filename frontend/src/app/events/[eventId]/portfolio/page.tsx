@@ -4,6 +4,7 @@ import { use, useCallback, useEffect, useState } from "react";
 import { useSession } from "@/lib/use-session";
 import { useEventSocket } from "@/lib/use-event-socket";
 import { fetchJson, FetchJsonError } from "@/lib/fetch-json";
+import { fetchEventOverviewFresh } from "@/lib/use-event-overview";
 import { TeamNav } from "../team-nav";
 import { PageFrame } from "@/components/theme/PageFrame";
 import { HeaderBanner } from "@/components/theme/HeaderBanner";
@@ -23,7 +24,7 @@ export default function PortfolioPage({ params }: { params: Promise<{ eventId: s
 
   const refresh = useCallback(async () => {
     try {
-      const ov = await fetchJson<any>(`/api/events/${eventId}/overview`);
+      const ov = (await fetchEventOverviewFresh(eventId)) as any;
       setOverview(ov);
       if (!ov.myTeam) return;
 

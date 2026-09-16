@@ -7,6 +7,8 @@ import { TeamNav } from "./team-nav";
 import { PageFrame } from "@/components/theme/PageFrame";
 import { HeaderBanner } from "@/components/theme/HeaderBanner";
 import { Panel, StatTile, WoodButton } from "@/components/theme/Panel";
+import { fetchEventOverviewFresh } from "@/lib/use-event-overview";
+import { FetchJsonError } from "@/lib/fetch-json";
 
 // Section 7.2 Team home / event lobby — restyled with the legacy team
 // page's exact visual language: the team/header-bg.png banner and the
@@ -24,13 +26,11 @@ export default function EventHomePage({ params }: { params: Promise<{ eventId: s
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    const res = await fetch(`/api/events/${eventId}/overview`);
-    const body = await res.json().catch(() => null);
-    if (res.ok) {
-      setOverview(body);
+    try {
+      setOverview(await fetchEventOverviewFresh(eventId));
       setLoadError(null);
-    } else {
-      setLoadError(body?.message ?? `Couldn't load this event (${res.status}).`);
+    } catch (err) {
+      setLoadError(err instanceof FetchJsonError ? err.message : "Couldn't load this event. Retrying…");
     }
   }, [eventId]);
 

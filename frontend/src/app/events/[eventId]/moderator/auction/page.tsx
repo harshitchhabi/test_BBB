@@ -27,6 +27,17 @@ export default function ModeratorAuctionPage({ params }: { params: Promise<{ eve
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [confirmState, setConfirmState] = useState<ConfirmDialogState | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+
+  // The moderator console only ever showed the timer indirectly (via the
+  // team-facing screen), which meant deciding when to step in and close
+  // a lot manually required tabbing over to check. Same 1-second tick as
+  // the Live Auction screen's countdown.
+  useEffect(() => {
+    if (!state?.liveLot?.closesAt) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [state?.liveLot?.id, state?.liveLot?.closesAt]);
 
   const refresh = useCallback(async () => {
     const res = await fetch(`/api/events/${eventId}/auction-state`);
@@ -188,6 +199,16 @@ export default function ModeratorAuctionPage({ params }: { params: Promise<{ eve
                   ? `${state.liveLot.currentHighestBid.amount} (${state.teams.find((t) => t.id === state.liveLot!.currentHighestBid!.teamId)?.name ?? "unknown team"})`
                   : "none"}
               </p>
+              {state.liveLot.closesAt && (() => {
+                const secondsLeft = Math.max(0, Math.round((new Date(state.liveLot!.closesAt!).getTime() - now) / 1000));
+                const urgent = secondsLeft <= 10;
+                return (
+                  <p className={`text-sm font-bold mb-2 ${urgent ? "text-red-400" : "text-yellow-300"}`}>
+                    Time remaining: {Math.floor(secondsLeft / 60)}:{(secondsLeft % 60).toString().padStart(2, "0")}
+                    {secondsLeft === 0 && " - timer's up, waiting to close"}
+                  </p>
+                );
+              })()}
               <div className="flex gap-2 flex-wrap">
                 <WoodButton variant="danger" disabled={busy} onClick={() => call(`/api/events/${eventId}/auction-lots/${state.liveLot!.id}/close`, { reason: "Moderator closed the lot." })}>
                   Close lot

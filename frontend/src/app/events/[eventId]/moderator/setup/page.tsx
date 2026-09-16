@@ -7,6 +7,7 @@ import { PageFrame } from "@/components/theme/PageFrame";
 import { HeaderBanner } from "@/components/theme/HeaderBanner";
 import { Panel, PanelTitle, WoodButton } from "@/components/theme/Panel";
 import { ConfirmDialog, type ConfirmDialogState } from "@/components/theme/ConfirmDialog";
+import { fetchEventOverviewFresh } from "@/lib/use-event-overview";
 
 // Section 7.8 "Event Setup" nav item. Materials/recipes/shocks/cities are
 // seeded from packages/db/seed (Phase 0) rather than authored through a
@@ -101,8 +102,12 @@ export default function ModeratorSetupPage({ params }: { params: Promise<{ event
   const [gameSettingsMessage, setGameSettingsMessage] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    const res = await fetch(`/api/events/${eventId}/overview`);
-    if (res.ok) setOverview(await res.json());
+    try {
+      setOverview(await fetchEventOverviewFresh(eventId));
+    } catch {
+      // Same silent-retry behavior this had before - this screen has no
+      // dedicated error banner for the overview fetch specifically.
+    }
   }, [eventId]);
 
   const refreshStaffList = useCallback(async () => {
