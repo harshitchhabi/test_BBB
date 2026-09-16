@@ -80,10 +80,21 @@ export async function startRound(params: {
   materialTypeId: string;
   actorParticipantId: string;
   openingBidOverride?: number;
+  // Lets the moderator set how much material each lot in this round
+  // contains, instead of it always being the value the material was
+  // seeded with (material.defaultLotQuantity) — same override pattern as
+  // openingBidOverride above. Every lot this round creates (one per
+  // active team) gets this same quantity; the winner of a lot is
+  // credited exactly this many units in closeLot.
+  lotQuantityOverride?: number;
 }) {
   return runInTransaction(async (tx, queueBroadcast) => {
     const event = await assertStage1(tx, params.eventId);
     await assertStaffTx(tx, params.eventId, params.actorParticipantId);
+
+    if (params.lotQuantityOverride !== undefined && (!Number.isInteger(params.lotQuantityOverride) || params.lotQuantityOverride <= 0)) {
+      throw new GameError("invalid_input", "Lot quantity must be a positive whole number.");
+    }
 
     const [material] = await tx.select().from(materialTypes).where(eq(materialTypes.id, params.materialTypeId));
     if (!material) throw new GameError("not_found", "Material type not found.");
@@ -179,7 +190,7 @@ export async function startRound(params: {
         .values({
           eventId: params.eventId,
           materialTypeId: material.id,
-          quantity: material.defaultLotQuantity,
+          quantity: params.lotQuantityOverride ?? material.defaultLotQuantity,
           openingBid: thisLotOpeningBid,
           source: "auction",
           status: "auctioning",

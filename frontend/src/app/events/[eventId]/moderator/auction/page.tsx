@@ -21,6 +21,7 @@ export default function ModeratorAuctionPage({ params }: { params: Promise<{ eve
   const [loadError, setLoadError] = useState<string | null>(null);
   const [materials, setMaterials] = useState<Array<{ materialTypeId: string; materialName: string }>>([]);
   const [materialTypeId, setMaterialTypeId] = useState("");
+  const [lotQuantity, setLotQuantity] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [confirmState, setConfirmState] = useState<ConfirmDialogState | null>(null);
@@ -56,7 +57,7 @@ export default function ModeratorAuctionPage({ params }: { params: Promise<{ eve
     if (connected) refresh();
   }, [connected, refresh]);
 
-  async function call(path: string, body?: unknown) {
+  async function call(path: string, body?: unknown, onSuccess?: () => void) {
     if (busy) return;
     setBusy(true);
     setMessage(null);
@@ -64,7 +65,10 @@ export default function ModeratorAuctionPage({ params }: { params: Promise<{ eve
       const res = await fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) setMessage(json.message ?? `Error (${res.status})`);
-      else await refresh();
+      else {
+        onSuccess?.();
+        await refresh();
+      }
     } finally {
       setBusy(false);
     }
@@ -115,17 +119,42 @@ export default function ModeratorAuctionPage({ params }: { params: Promise<{ eve
       <Panel className="w-full max-w-2xl mb-4">
         <PanelTitle>START A ROUND</PanelTitle>
         <p className="text-white/70 text-sm mb-2">Pick the next material to auction.</p>
-        <div className="flex gap-2">
-          <select value={materialTypeId} onChange={(e) => setMaterialTypeId(e.target.value)} className="flex-1 px-3 py-2 rounded text-black">
+        <div className="flex gap-2 flex-wrap">
+          <select value={materialTypeId} onChange={(e) => setMaterialTypeId(e.target.value)} className="flex-1 min-w-40 px-3 py-2 rounded text-black">
             <option value="">Choose a material…</option>
             {materials.map((m) => (
               <option key={m.materialTypeId} value={m.materialTypeId}>{m.materialName}</option>
             ))}
           </select>
-          <WoodButton variant="primary" disabled={busy || !materialTypeId} onClick={() => call(`/api/events/${eventId}/auction-rounds`, { materialTypeId })}>
+          <input
+            type="number"
+            min={1}
+            value={lotQuantity}
+            onChange={(e) => setLotQuantity(e.target.value)}
+            placeholder="Qty per lot (default)"
+            className="w-40 px-3 py-2 rounded text-black"
+          />
+          <WoodButton
+            variant="primary"
+            disabled={busy || !materialTypeId}
+            onClick={() =>
+              call(
+                `/api/events/${eventId}/auction-rounds`,
+                { materialTypeId, lotQuantityOverride: lotQuantity ? Number(lotQuantity) : undefined },
+                () => {
+                  setMaterialTypeId("");
+                  setLotQuantity("");
+                },
+              )
+            }
+          >
             Start round
           </WoodButton>
         </div>
+        <p className="text-white/50 text-xs mt-1">
+          Leave quantity blank to use the material's configured default — every lot in this round (one per active
+          team) will contain this much of the material.
+        </p>
         {materials.length === 0 && <p className="text-yellow-300 text-sm mt-2">No materials found — has the event been seeded?</p>}
       </Panel>
 

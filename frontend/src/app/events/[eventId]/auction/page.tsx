@@ -40,6 +40,24 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ eventId:
     return () => clearInterval(id);
   }, [state?.liveLot?.id, state?.liveLot?.closesAt]);
 
+  // Section 7.3: bidding is stepper-only, not free typing — a team can
+  // only ever land on a value the server would actually accept (the
+  // current minimum, or that plus whole minimumRaise increments), so
+  // there's no way to fat-finger a bid that's rejected as "too low" or
+  // one far above what was intended. Resets to the fresh minimum
+  // whenever the lot changes or someone else's bid moves that minimum
+  // up past whatever this team had stepped to.
+  useEffect(() => {
+    if (!state?.liveLot) return;
+    setBidAmount((prev) => {
+      const prevNum = Number(prev);
+      if (!prev || !Number.isFinite(prevNum) || prevNum < state.liveLot!.nextMinimumBid) {
+        return String(state.liveLot!.nextMinimumBid);
+      }
+      return prev;
+    });
+  }, [state?.liveLot?.id, state?.liveLot?.nextMinimumBid]);
+
   const refresh = useCallback(async () => {
     const res = await fetch(`/api/events/${eventId}/auction-state`);
     const body = await res.json().catch(() => null);
@@ -167,13 +185,30 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ eventId:
 
               {canBid ? (
                 <div className="space-y-3">
-                  <input
-                    type="number"
-                    value={bidAmount}
-                    onChange={(e) => setBidAmount(e.target.value)}
-                    placeholder={String(state.liveLot.nextMinimumBid)}
-                    className="w-full px-4 py-3 rounded-lg text-black text-xl font-semibold"
-                  />
+                  <div className="flex items-center gap-3">
+                    <WoodButton
+                      type="button"
+                      className="text-2xl px-4 py-3"
+                      disabled={submitting || Number(bidAmount) <= state.liveLot.nextMinimumBid}
+                      onClick={() => setBidAmount((v) => String(Math.max(state.liveLot!.nextMinimumBid, Number(v) - state.liveLot!.minimumRaise)))}
+                    >
+                      −
+                    </WoodButton>
+                    <div className="flex-1 text-center px-4 py-3 rounded-lg bg-white/90 text-black text-2xl font-bold">
+                      ₹{bidAmount || state.liveLot.nextMinimumBid}
+                    </div>
+                    <WoodButton
+                      type="button"
+                      className="text-2xl px-4 py-3"
+                      disabled={submitting}
+                      onClick={() => setBidAmount((v) => String((Number(v) || state.liveLot!.nextMinimumBid) + state.liveLot!.minimumRaise))}
+                    >
+                      +
+                    </WoodButton>
+                  </div>
+                  <p className="text-[#F1EBB5]/70 text-xs text-center">
+                    Each press moves by the minimum raise (₹{state.liveLot.minimumRaise}) — always a bid the auction will actually accept.
+                  </p>
                   <WoodButton variant="primary" className="w-full text-lg py-3" onClick={submitBid} disabled={submitting || !bidAmount}>
                     {submitting ? "⏳ Placing Bid..." : "🚀 Place Bid"}
                   </WoodButton>

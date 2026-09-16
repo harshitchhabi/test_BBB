@@ -145,10 +145,14 @@ export default function TradeBuildPage({ params }: { params: Promise<{ eventId: 
 
   const otherTeams = overview.teams.filter((t: any) => t.id !== overview.myTeam.id);
   const counterpartyInventory = teamsInventory.find((t: any) => t.teamId === counterpartyTeamId);
-  // Trades still just a proposal, involving my team either way — the
-  // counterparty needs to actually agree before anything moves, and the
-  // proposer can withdraw their own offer while it's still pending.
-  const pendingTrades = myTrades.filter((t: any) => t.status === "submitted");
+  const isMyTrade = (t: any) => t.proposerTeamId === overview.myTeam.id || t.counterpartyTeamId === overview.myTeam.id;
+  // myTrades is really "every trade in this event" now — trades/list
+  // shows all of them to every team so a team can see what's being
+  // negotiated around them, not just their own. Only the pending ones
+  // actually involving my team are actionable (accept/decline/withdraw);
+  // everyone else's pending offers are shown separately, read-only.
+  const pendingTrades = myTrades.filter((t: any) => t.status === "submitted" && isMyTrade(t));
+  const otherPendingTrades = myTrades.filter((t: any) => t.status === "submitted" && !isMyTrade(t));
 
   return (
     <PageFrame>
@@ -247,7 +251,28 @@ export default function TradeBuildPage({ params }: { params: Promise<{ eventId: 
             </div>
           )}
 
-          <h3 className="text-yellow-300 font-bold mb-2">History</h3>
+          {otherPendingTrades.length > 0 && (
+            <div className="mb-4">
+              <h3 className="text-yellow-300 font-bold mb-2">Other teams' open offers</h3>
+              <p className="text-white/60 text-xs mb-2">Visible to everyone — only the two teams involved can accept, decline, or withdraw.</p>
+              <div className="space-y-2">
+                {otherPendingTrades.map((t: any) => (
+                  <div key={t.id} className="bg-[#764A21]/25 rounded-lg p-3 text-sm text-white">
+                    <div className="font-bold">
+                      #{t.tradeNumber}: {t.proposerTeamName} ↔ {t.counterpartyTeamName}
+                    </div>
+                    <div className="text-white/70 mt-1">
+                      {t.lines.map((l: any, i: number) => (
+                        <div key={i}>{l.fromTeamName} gives {l.quantity} {l.material?.name}</div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <h3 className="text-yellow-300 font-bold mb-2">All trades in this event</h3>
           <div className="space-y-1">
             {myTrades.map((t) => (
               <div key={t.id} className="bg-[#764A21]/40 rounded px-3 py-2 text-sm text-white">

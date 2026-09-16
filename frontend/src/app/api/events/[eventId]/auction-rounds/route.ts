@@ -15,7 +15,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ eventId
       throw new GameError("forbidden", "Only event moderators can start an auction round.");
     }
 
-    const { materialTypeId, openingBidOverride } = await req.json();
+    const { materialTypeId, openingBidOverride, lotQuantityOverride } = await req.json();
     if (typeof materialTypeId !== "string") {
       return NextResponse.json({ error: "invalid_input", message: "materialTypeId is required." }, { status: 400 });
     }
@@ -25,6 +25,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ eventId
       materialTypeId,
       actorParticipantId: participant.id,
       openingBidOverride: typeof openingBidOverride === "number" ? openingBidOverride : undefined,
+      lotQuantityOverride: typeof lotQuantityOverride === "number" ? lotQuantityOverride : undefined,
     });
     return NextResponse.json(round);
   } catch (err) {
