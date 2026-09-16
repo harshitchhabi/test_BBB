@@ -1,8 +1,31 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEventOverview } from "@/lib/use-event-overview";
+
+// A plain wall clock, not a lot/auction countdown (those already exist
+// on the Stage 1 and Cities consoles) - a moderator running a live event
+// needs the current time visible on every screen to pace rounds against
+// a schedule, not just how long the CURRENT lot has left.
+function LiveClock() {
+  const [now, setNow] = useState<Date | null>(null);
+  useEffect(() => {
+    setNow(new Date());
+    const id = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  // Renders nothing until the first client-side tick - avoids a
+  // server/client markup mismatch, since the server has no "current
+  // time" to render that would ever match the client's.
+  if (!now) return null;
+  return (
+    <span className="ml-auto px-3 py-1.5 rounded bg-[#463d36] text-[#F1EBB5] text-sm md:text-base font-mono tracking-wide shadow">
+      {now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+    </span>
+  );
+}
 
 // Section 7.8 moderator console navigation, same wood/gold theme as the
 // team portal's nav. Score & Reveal lives inside the Cities screen
@@ -72,6 +95,7 @@ export function ModNav({ eventId }: { eventId: string }) {
       {alwaysOn.map((l) => renderLink(l.href, l.label, false))}
       {stageLinks.map((l) => renderLink(l.href, l.label, !isRelevant(l.key)))}
       {alwaysOnEnd.map((l) => renderLink(l.href, l.label, false))}
+      <LiveClock />
     </nav>
   );
 }

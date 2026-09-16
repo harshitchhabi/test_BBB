@@ -15,6 +15,7 @@ export const WS_EVENT_TYPES = [
   "inspection.resolved",
   "city.auction_opened",
   "city.bid_accepted",
+  "city.auction_closed",
   "city.assigned",
   "score.revealed",
   "moderator.announcement",

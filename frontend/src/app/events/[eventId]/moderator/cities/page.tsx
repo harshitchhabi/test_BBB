@@ -74,7 +74,14 @@ export default function ModeratorCitiesPage({ params }: { params: Promise<{ even
       const res = await fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) setMessage(json.message ?? `Error (${res.status})`);
-      else refresh();
+      // Refresh either way, not just on success: a "conflict" response
+      // here (e.g. "Only a live city auction can be closed") almost
+      // always means this screen's own view of a row is stale — the
+      // moderator missed the close window and the timer already
+      // resolved it, or another moderator acted first — so the fix is
+      // to reload the real state immediately, not leave a dead button
+      // sitting there with nothing else the moderator can do about it.
+      await refresh();
     } finally {
       setBusy(false);
     }

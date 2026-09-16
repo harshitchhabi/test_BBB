@@ -78,10 +78,14 @@ export default function ModeratorAuctionPage({ params }: { params: Promise<{ eve
       const res = await fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) setMessage(json.message ?? `Error (${res.status})`);
-      else {
-        onSuccess?.();
-        await refresh();
-      }
+      else onSuccess?.();
+      // Refresh either way, not just on success: a rejected close/void
+      // here almost always means this screen's own view of the lot is
+      // stale (the timer sweep already closed it, or another moderator
+      // acted first) - reload the real state immediately instead of
+      // leaving a dead button with no way to recover short of a manual
+      // page reload.
+      await refresh();
     } finally {
       setBusy(false);
     }

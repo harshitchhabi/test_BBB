@@ -77,14 +77,33 @@ export default function TradeBuildPage({ params }: { params: Promise<{ eventId: 
 
   const quantityByMaterial = new Map(inventory.map((i) => [i.materialTypeId, i.quantity]));
 
+  // A line only counts as complete when it has a material chosen and a
+  // genuinely valid positive whole-number quantity - a blank or partial
+  // line (still on "material…", or an empty/non-numeric quantity field)
+  // used to just get silently dropped by submitTrade's filter, which
+  // meant clicking "Propose trade" with only an incomplete line filled
+  // in submitted an EMPTY lines array with no client-side warning at
+  // all - the confusing generic 400 ("proposerTeamId, counterpartyTeamId,
+  // and valid lines... are required") was the very first sign anything
+  // was wrong. Now surfaced before it ever reaches the server.
+  function isCompleteLine(l: { materialTypeId: string; quantity: string }) {
+    if (!l.materialTypeId) return false;
+    const n = Number(l.quantity);
+    return l.quantity.trim() !== "" && Number.isInteger(n) && n > 0;
+  }
+  const completeLines = tradeLines.filter(isCompleteLine);
+  const hasIncompleteLine = tradeLines.some((l) => (l.materialTypeId || l.quantity) && !isCompleteLine(l));
+
   async function submitTrade() {
     if (!overview?.myTeam || busy) return;
+    if (completeLines.length === 0) {
+      setMessage("Add at least one complete line (material + a positive whole-number quantity) before proposing a trade.");
+      return;
+    }
     setBusy(true);
     setMessage(null);
     try {
-      const lines = tradeLines
-        .filter((l) => l.materialTypeId && l.quantity)
-        .map((l) => ({ fromTeamId: l.fromMe ? overview.myTeam.id : counterpartyTeamId, materialTypeId: l.materialTypeId, quantity: Number(l.quantity) }));
+      const lines = completeLines.map((l) => ({ fromTeamId: l.fromMe ? overview.myTeam.id : counterpartyTeamId, materialTypeId: l.materialTypeId, quantity: Number(l.quantity) }));
       const res = await fetch(`/api/events/${eventId}/trades`, {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -181,38 +200,65 @@ export default function TradeBuildPage({ params }: { params: Promise<{ eventId: 
                     : "none yet"}
                 </div>
               )}
-              {tradeLines.map((line, i) => (
-                <div key={i} className="flex gap-1 mt-2">
-                  <select
-                    value={line.fromMe ? "me" : "them"}
-                    onChange={(e) => setTradeLines((ls) => ls.map((l, j) => (j === i ? { ...l, fromMe: e.target.value === "me" } : l)))}
-                    className="rounded px-1 text-black text-sm"
-                  >
-                    <option value="me">I give</option>
-                    <option value="them">They give</option>
-                  </select>
-                  <select
-                    value={line.materialTypeId}
-                    onChange={(e) => setTradeLines((ls) => ls.map((l, j) => (j === i ? { ...l, materialTypeId: e.target.value } : l)))}
-                    className="rounded px-1 text-black text-sm flex-1"
-                  >
-                    <option value="">material…</option>
-                    {bankStock.map((m: any) => (
-                      <option key={m.materialTypeId} value={m.materialTypeId}>{m.materialName}</option>
-                    ))}
-                  </select>
-                  <input
-                    type="number"
-                    className="w-16 rounded px-1 text-black text-sm"
-                    value={line.quantity}
-                    onChange={(e) => setTradeLines((ls) => ls.map((l, j) => (j === i ? { ...l, quantity: e.target.value } : l)))}
-                  />
-                </div>
-              ))}
+              {tradeLines.map((line, i) => {
+                // How much of the chosen material the relevant side
+                // actually holds - shown as a hint (and as the input's
+                // max) so a team can see, right where they're typing,
+                // whether the quantity they're about to ask for or
+                // offer is even possible - not a hard server-side limit
+                // (a trade can still be proposed against materials not
+                // held yet), just a guardrail against an obvious typo.
+                const holderMaterials = line.fromMe ? inventory : counterpartyInventory?.materials;
+                const held = line.materialTypeId ? holderMaterials?.find((m: any) => m.materialTypeId === line.materialTypeId)?.quantity ?? 0 : null;
+                return (
+                  <div key={i} className="flex gap-1 mt-2 items-center">
+                    <select
+                      value={line.fromMe ? "me" : "them"}
+                      onChange={(e) => setTradeLines((ls) => ls.map((l, j) => (j === i ? { ...l, fromMe: e.target.value === "me" } : l)))}
+                      className="rounded px-1 text-black text-sm"
+                    >
+                      <option value="me">I give</option>
+                      <option value="them">They give</option>
+                    </select>
+                    <select
+                      value={line.materialTypeId}
+                      onChange={(e) => setTradeLines((ls) => ls.map((l, j) => (j === i ? { ...l, materialTypeId: e.target.value } : l)))}
+                      className="rounded px-1 text-black text-sm flex-1"
+                    >
+                      <option value="">material…</option>
+                      {bankStock.map((m: any) => (
+                        <option key={m.materialTypeId} value={m.materialTypeId}>{m.materialName}</option>
+                      ))}
+                    </select>
+                    <input
+                      type="number"
+                      min={1}
+                      className="w-16 rounded px-1 text-black text-sm"
+                      placeholder={held != null ? `qty (has ${held})` : "qty"}
+                      value={line.quantity}
+                      onChange={(e) => setTradeLines((ls) => ls.map((l, j) => (j === i ? { ...l, quantity: e.target.value } : l)))}
+                    />
+                    {tradeLines.length > 1 && (
+                      <WoodButton
+                        variant="danger"
+                        className="px-2 py-1 text-xs"
+                        onClick={() => setTradeLines((ls) => ls.filter((_, j) => j !== i))}
+                      >
+                        Remove
+                      </WoodButton>
+                    )}
+                  </div>
+                );
+              })}
               <div className="flex gap-2 mt-3">
                 <WoodButton onClick={() => setTradeLines((ls) => [...ls, { fromMe: true, materialTypeId: "", quantity: "" }])}>+ line</WoodButton>
-                <WoodButton variant="primary" onClick={submitTrade} disabled={busy || !counterpartyTeamId}>Propose trade</WoodButton>
+                <WoodButton variant="primary" onClick={submitTrade} disabled={busy || !counterpartyTeamId || completeLines.length === 0}>
+                  Propose trade
+                </WoodButton>
               </div>
+              {hasIncompleteLine && (
+                <p className="text-yellow-300 text-xs mt-2">One or more lines are incomplete and won't be included - pick a material and a quantity for each line you want to submit.</p>
+              )}
             </div>
           ) : (
             <p className="text-[#F1EBB5] mb-4">Only your team leader can propose a trade.</p>

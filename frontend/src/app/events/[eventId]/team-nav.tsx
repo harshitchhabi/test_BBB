@@ -24,7 +24,7 @@ export function TeamNav({ eventId }: { eventId: string }) {
   const isStaff = Boolean(overview?.isStaff);
 
   const teamOnlyLinks = [
-    { href: `/events/${eventId}/auction`, label: "Live Auction" },
+    { href: `/events/${eventId}/auction`, label: "Material Auction" },
     { href: `/events/${eventId}/inventory`, label: "Inventory" },
     { href: `/events/${eventId}/trade-build`, label: "Trade & Build" },
     { href: `/events/${eventId}/city-auction`, label: "City Auction" },

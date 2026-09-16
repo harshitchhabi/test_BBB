@@ -294,6 +294,17 @@ export async function closeCityAuction(params: { eventId: string; cityAuctionId:
       .where(and(eq(cityBids.cityAuctionId, auction.id), eq(cityBids.status, "winning")));
 
     const result = await settleCityAuction(tx, { eventId: params.eventId, auction, winningBid, actorParticipantId: params.actorParticipantId });
+    // Always broadcast something on close, not just when there's a
+    // winner — an auction that times out with no bids (or that the
+    // timer sweep closed because a moderator missed the window) used to
+    // close silently, leaving every connected screen still showing it
+    // as "live" with an actionable Close button. Clicking that stale
+    // button then failed with "Only a live city auction can be closed"
+    // and nothing on screen explained why or fixed itself. This event
+    // triggers the same refresh() every screen already runs on any
+    // broadcast, so a closed auction disappears from "live" everywhere
+    // within moments regardless of whether it sold.
+    queueBroadcast({ eventId: params.eventId, type: "city.auction_closed", data: { cityAuctionId: auction.id, cityId: auction.cityId, winnerTeamId: result.winnerTeamId } });
     if (result.winnerTeamId) {
       queueBroadcast({ eventId: params.eventId, type: "city.assigned", data: result });
     }

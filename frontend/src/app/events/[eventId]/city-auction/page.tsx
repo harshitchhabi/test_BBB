@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useCallback, useEffect, useState } from "react";
+import { use, useCallback, useEffect, useRef, useState } from "react";
 import { useSession } from "@/lib/use-session";
 import { useEventSocket } from "@/lib/use-event-socket";
 import { fetchJson, FetchJsonError } from "@/lib/fetch-json";
@@ -66,6 +66,34 @@ export default function CityAuctionPage({ params }: { params: Promise<{ eventId:
     return () => clearInterval(id);
   }, [liveAuctionId]);
 
+  // Same stepper-only bidding as the material auction screen, for the
+  // same reason: a team can only ever land on a value the server would
+  // actually accept. Resets to the fresh minimum on a NEW auction (even
+  // if that's lower than whatever was last stepped to) and clamps
+  // upward within the SAME auction when someone else outbids.
+  const liveAuctionForTimer = auctions.find((a) => a.status === "live");
+  const currentNextMinimumBid = liveAuctionForTimer
+    ? liveAuctionForTimer.currentHighestBid
+      ? liveAuctionForTimer.currentHighestBid.amount + liveAuctionForTimer.minimumRaise
+      : liveAuctionForTimer.openingBid
+    : 0;
+  const liveAuctionRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!liveAuctionId) {
+      liveAuctionRef.current = null;
+      return;
+    }
+    const isNewAuction = liveAuctionRef.current !== liveAuctionId;
+    liveAuctionRef.current = liveAuctionId;
+    setBidAmount((prev) => {
+      const prevNum = Number(prev);
+      if (isNewAuction || !prev || !Number.isFinite(prevNum) || prevNum < currentNextMinimumBid) {
+        return String(currentNextMinimumBid);
+      }
+      return prev;
+    });
+  }, [liveAuctionId, currentNextMinimumBid]);
+
   async function bid(auctionId: string) {
     if (!overview?.myTeam || busy) return;
     setBusy(true);
@@ -113,6 +141,11 @@ export default function CityAuctionPage({ params }: { params: Promise<{ eventId:
   const scoutReportByCity = new Map(scoutReports.map((r) => [r.cityId, r]));
   const secondsLeft = liveAuction?.closesAt ? Math.max(0, Math.round((new Date(liveAuction.closesAt).getTime() - now) / 1000)) : 0;
   const timerExpired = Boolean(liveAuction?.closesAt) && secondsLeft <= 0;
+  const nextMinimumBid = liveAuction
+    ? liveAuction.currentHighestBid
+      ? liveAuction.currentHighestBid.amount + liveAuction.minimumRaise
+      : liveAuction.openingBid
+    : 0;
 
   return (
     <PageFrame>
@@ -144,9 +177,29 @@ export default function CityAuctionPage({ params }: { params: Promise<{ eventId:
             </p>
           )}
           {overview.myRole === "leader" && !myCity && !timerExpired ? (
-            <div className="flex gap-2">
-              <input type="number" value={bidAmount} onChange={(e) => setBidAmount(e.target.value)} className="px-3 py-2 rounded text-black flex-1" />
-              <WoodButton variant="primary" onClick={() => bid(liveAuction.id)} disabled={busy || !bidAmount}>Bid</WoodButton>
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <WoodButton
+                  type="button"
+                  className="text-xl px-3 py-2"
+                  disabled={busy || Number(bidAmount) <= nextMinimumBid}
+                  onClick={() => setBidAmount((v) => String(Math.max(nextMinimumBid, Number(v) - liveAuction.minimumRaise)))}
+                >
+                  −
+                </WoodButton>
+                <div className="flex-1 text-center px-3 py-2 rounded-lg bg-white/90 text-black text-xl font-bold">
+                  ₹{bidAmount || nextMinimumBid}
+                </div>
+                <WoodButton
+                  type="button"
+                  className="text-xl px-3 py-2"
+                  disabled={busy}
+                  onClick={() => setBidAmount((v) => String((Number(v) || nextMinimumBid) + liveAuction.minimumRaise))}
+                >
+                  +
+                </WoodButton>
+              </div>
+              <WoodButton variant="primary" className="w-full" onClick={() => bid(liveAuction.id)} disabled={busy || !bidAmount}>Bid</WoodButton>
             </div>
           ) : timerExpired && overview.myRole === "leader" && !myCity ? (
             <p className="text-[#F1EBB5]">This auction's timer has run out - waiting for the moderator to close it.</p>
