@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useCallback, useEffect, useState } from "react";
+import { use, useCallback, useEffect, useRef, useState } from "react";
 import { useSession } from "@/lib/use-session";
 import { useEventSocket } from "@/lib/use-event-socket";
 import { fetchJson, FetchJsonError } from "@/lib/fetch-json";
@@ -27,9 +27,26 @@ export default function TradeBuildPage({ params }: { params: Promise<{ eventId: 
   const [teamsInventory, setTeamsInventory] = useState<any[]>([]);
   const [allBuildings, setAllBuildings] = useState<any[]>([]);
   const [inspectTargetId, setInspectTargetId] = useState("");
+  // Keyed by recipe id - the engine's constructBuilding already accepts
+  // any combination of eco/landmark/luxury on one construction (they're
+  // independent checks, not mutually exclusive), but the UI only ever
+  // sent one bonus flag at a time, one button per bonus - so a team had
+  // no way to actually claim more than one bonus on the same building
+  // even though the server fully supports it.
+  const [bonusSelections, setBonusSelections] = useState<Record<string, { eco?: boolean; landmark?: boolean; luxury?: boolean; luxuryMaterialKey?: string }>>({});
   const [message, setMessage] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Every action on this page shares the single `busy` state, but a
+  // React state read is stale relative to the click event that triggers
+  // it - two clicks close enough together (a fast double-click, or
+  // Enter held on a focused button) can both invoke a handler while
+  // `busy` still reads false in both closures, before either render has
+  // committed the disabled attribute. A ref is read fresh on every
+  // call regardless of render timing - real risk here since these
+  // actions spend tokens, consume finite materials, or count against a
+  // limited number of trades/inspections.
+  const busyRef = useRef(false);
 
   const [counterpartyTeamId, setCounterpartyTeamId] = useState("");
   const [tradeLines, setTradeLines] = useState<Array<{ fromMe: boolean; materialTypeId: string; quantity: string }>>([
@@ -96,11 +113,12 @@ export default function TradeBuildPage({ params }: { params: Promise<{ eventId: 
   const hasIncompleteLine = tradeLines.some((l) => (l.materialTypeId || l.quantity) && !isCompleteLine(l));
 
   async function submitTrade() {
-    if (!overview?.myTeam || busy) return;
+    if (!overview?.myTeam || busyRef.current) return;
     if (completeLines.length === 0) {
       setMessage("Add at least one complete line (material + a positive whole-number quantity) before proposing a trade.");
       return;
     }
+    busyRef.current = true;
     setBusy(true);
     setMessage(null);
     try {
@@ -118,12 +136,14 @@ export default function TradeBuildPage({ params }: { params: Promise<{ eventId: 
       // loaded.
       await refresh();
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   }
 
   async function respondToTrade(tradeId: string, action: "accept" | "decline") {
-    if (busy) return;
+    if (busyRef.current) return;
+    busyRef.current = true;
     setBusy(true);
     setMessage(null);
     try {
@@ -135,12 +155,14 @@ export default function TradeBuildPage({ params }: { params: Promise<{ eventId: 
       // so a dead accept/decline button doesn't linger.
       await refresh();
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   }
 
-  async function construct(recipeId: string, bonuses: Record<string, boolean>) {
-    if (!overview?.myTeam || busy) return;
+  async function construct(recipeId: string, bonuses: { eco?: boolean; landmark?: boolean; luxury?: boolean; luxuryMaterialKey?: string }) {
+    if (!overview?.myTeam || busyRef.current) return;
+    busyRef.current = true;
     setBusy(true);
     setMessage(null);
     try {
@@ -153,6 +175,7 @@ export default function TradeBuildPage({ params }: { params: Promise<{ eventId: 
       if (!res.ok) setMessage(body.message ?? `Something went wrong (${res.status}). Please try again.`);
       await refresh();
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   }
@@ -168,7 +191,8 @@ export default function TradeBuildPage({ params }: { params: Promise<{ eventId: 
   // the same way materials/trades already do, and this is the missing
   // UI to actually use it.
   async function requestInspection() {
-    if (!overview?.myTeam || busy || !inspectTargetId) return;
+    if (!overview?.myTeam || busyRef.current || !inspectTargetId) return;
+    busyRef.current = true;
     setBusy(true);
     setMessage(null);
     try {
@@ -182,6 +206,7 @@ export default function TradeBuildPage({ params }: { params: Promise<{ eventId: 
       else setInspectTargetId("");
       await refresh();
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   }
@@ -383,13 +408,52 @@ export default function TradeBuildPage({ params }: { params: Promise<{ eventId: 
                       </li>
                     ))}
                   </ul>
-                  {canBuild && (overview.myRole === "leader" || overview.isStaff) && (
-                    <div className="flex gap-2 mt-2 flex-wrap">
-                      <WoodButton variant="primary" disabled={busy} onClick={() => construct(r.id, {})}>Construct</WoodButton>
-                      <WoodButton disabled={busy} onClick={() => construct(r.id, { eco: true })}>+ Eco</WoodButton>
-                      <WoodButton disabled={busy} onClick={() => construct(r.id, { landmark: true })}>+ Landmark</WoodButton>
-                    </div>
-                  )}
+                  {canBuild && (overview.myRole === "leader" || overview.isStaff) && (() => {
+                    const sel = bonusSelections[r.id] ?? {};
+                    const setSel = (patch: Partial<typeof sel>) => setBonusSelections((s) => ({ ...s, [r.id]: { ...sel, ...patch } }));
+                    const luxuryEligible = ["mall", "university", "office"].includes(r.key);
+                    return (
+                      <div className="mt-2">
+                        <div className="flex gap-3 flex-wrap text-xs text-white/90 mb-2">
+                          <label className="flex items-center gap-1">
+                            <input type="checkbox" checked={Boolean(sel.eco)} onChange={(e) => setSel({ eco: e.target.checked })} />
+                            Eco (+4 Solar)
+                          </label>
+                          <label className="flex items-center gap-1">
+                            <input type="checkbox" checked={Boolean(sel.landmark)} onChange={(e) => setSel({ landmark: e.target.checked })} />
+                            Landmark (+1 Blueprint)
+                          </label>
+                          {luxuryEligible && (
+                            <label className="flex items-center gap-1">
+                              <input
+                                type="checkbox"
+                                checked={Boolean(sel.luxury)}
+                                onChange={(e) => setSel({ luxury: e.target.checked, luxuryMaterialKey: sel.luxuryMaterialKey ?? "marble" })}
+                              />
+                              Luxury (+1
+                              <select
+                                value={sel.luxuryMaterialKey ?? "marble"}
+                                onChange={(e) => setSel({ luxuryMaterialKey: e.target.value })}
+                                className="text-black rounded px-1"
+                                disabled={!sel.luxury}
+                              >
+                                <option value="marble">Marble</option>
+                                <option value="tiles">Tiles</option>
+                              </select>
+                              )
+                            </label>
+                          )}
+                        </div>
+                        <WoodButton
+                          variant="primary"
+                          disabled={busy}
+                          onClick={() => construct(r.id, { eco: sel.eco, landmark: sel.landmark, luxury: sel.luxury, luxuryMaterialKey: sel.luxury ? sel.luxuryMaterialKey ?? "marble" : undefined })}
+                        >
+                          Construct{sel.eco || sel.landmark || sel.luxury ? " with bonuses" : ""}
+                        </WoodButton>
+                      </div>
+                    );
+                  })()}
                 </div>
               );
             })}

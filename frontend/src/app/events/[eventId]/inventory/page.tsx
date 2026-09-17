@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useCallback, useEffect, useState } from "react";
+import { use, useCallback, useEffect, useRef, useState } from "react";
 import { useSession } from "@/lib/use-session";
 import { useEventSocket } from "@/lib/use-event-socket";
 import { fetchJson, FetchJsonError } from "@/lib/fetch-json";
@@ -49,8 +49,18 @@ export default function InventoryPage({ params }: { params: Promise<{ eventId: s
     if (connected) refresh();
   }, [connected, refresh]);
 
+  // A ref, not the buyBusy state: React's re-render (which is what
+  // actually disables the Buy button on screen) happens asynchronously
+  // relative to the click event, so two clicks close enough together
+  // (a fast double-click, or Enter held on a focused button) can both
+  // reach this function while buyBusy still reads its old value in
+  // both closures - a real risk here specifically, since a double-fire
+  // would charge tokens and consume finite bank stock twice. A ref is
+  // read fresh on every call regardless of render timing.
+  const buyGuardRef = useRef(false);
   async function buyFromBank() {
-    if (!overview?.myTeam || buyBusy || !buyMaterialTypeId || !buyQuantity) return;
+    if (!overview?.myTeam || buyGuardRef.current || !buyMaterialTypeId || !buyQuantity) return;
+    buyGuardRef.current = true;
     setBuyBusy(true);
     setBuyMessage(null);
     try {
@@ -68,6 +78,7 @@ export default function InventoryPage({ params }: { params: Promise<{ eventId: s
       }
       await refresh();
     } finally {
+      buyGuardRef.current = false;
       setBuyBusy(false);
     }
   }

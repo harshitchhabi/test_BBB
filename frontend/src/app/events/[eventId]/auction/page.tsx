@@ -102,8 +102,20 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ eventId:
     if (connected) refresh();
   }, [connected, refresh]);
 
+  // A ref, not the submitting state: React's re-render (what actually
+  // disables the Place Bid button on screen) happens asynchronously
+  // relative to the click event, so two clicks close enough together
+  // could both reach this function while `submitting` still reads
+  // false in both closures. This function previously had NO internal
+  // guard at all (only the button's disabled prop), so this closes a
+  // real gap, not just a timing nuance - though note bidding itself was
+  // already safe from actual harm either way: placeBid locks the lot
+  // row and only ever deducts tokens at close time, so a redundant
+  // second bid is just cleanly rejected, never a double-charge.
+  const submittingRef = useRef(false);
   async function submitBid() {
-    if (!state?.liveLot || !state.myTeamId) return;
+    if (!state?.liveLot || !state.myTeamId || submittingRef.current) return;
+    submittingRef.current = true;
     setSubmitting(true);
     setError(null);
     try {
@@ -120,6 +132,7 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ eventId:
       // the real state so this screen doesn't keep showing a dead lot.
       await refresh();
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
   }

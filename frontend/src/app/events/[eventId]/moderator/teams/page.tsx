@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useCallback, useEffect, useState } from "react";
+import { use, useCallback, useEffect, useRef, useState } from "react";
 import { useSession } from "@/lib/use-session";
 import { useEventSocket } from "@/lib/use-event-socket";
 import { FetchJsonError } from "@/lib/fetch-json";
@@ -30,6 +30,12 @@ export default function ModeratorTeamsPage({ params }: { params: Promise<{ event
   const [createBusy, setCreateBusy] = useState(false);
   const [issuedCredential, setIssuedCredential] = useState<{ username: string; password: string } | null>(null);
   const [confirmState, setConfirmState] = useState<ConfirmDialogState | null>(null);
+  // A ref, not the busy state: adjust-tokens in particular is a real
+  // double-application risk on a fast double-click (a React state read
+  // lags the click event that triggers it), unlike bidding this is
+  // never protected by a server-side "only one winner can commit" row
+  // lock in the same way - each call is its own independent delta.
+  const busyRef = useRef(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -50,7 +56,8 @@ export default function ModeratorTeamsPage({ params }: { params: Promise<{ event
   }, [connected, refresh]);
 
   async function call(path: string, body?: unknown, method: "POST" | "DELETE" = "POST") {
-    if (busy) return;
+    if (busyRef.current) return;
+    busyRef.current = true;
     setBusy(true);
     setMessage(null);
     try {
@@ -60,6 +67,7 @@ export default function ModeratorTeamsPage({ params }: { params: Promise<{ event
       // Refresh either way - see the same fix on the Trade Desk console.
       await refresh();
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   }

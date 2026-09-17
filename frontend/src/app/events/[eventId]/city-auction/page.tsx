@@ -25,6 +25,10 @@ export default function CityAuctionPage({ params }: { params: Promise<{ eventId:
   const [loadError, setLoadError] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [busy, setBusy] = useState(false);
+  // See the identical note on the Trade & Build screen - a ref closes
+  // the double-click race a React state read can't, since re-render
+  // timing lags the raw click event.
+  const busyRef = useRef(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -95,7 +99,8 @@ export default function CityAuctionPage({ params }: { params: Promise<{ eventId:
   }, [liveAuctionId, currentNextMinimumBid]);
 
   async function bid(auctionId: string) {
-    if (!overview?.myTeam || busy) return;
+    if (!overview?.myTeam || busyRef.current) return;
+    busyRef.current = true;
     setBusy(true);
     setMessage(null);
     try {
@@ -112,12 +117,14 @@ export default function CityAuctionPage({ params }: { params: Promise<{ eventId:
       // showing a bid form for it.
       await refresh();
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   }
 
   async function scout(cityId: string) {
-    if (!overview?.myTeam || busy) return;
+    if (!overview?.myTeam || busyRef.current) return;
+    busyRef.current = true;
     setBusy(true);
     setMessage(null);
     try {
@@ -128,8 +135,9 @@ export default function CityAuctionPage({ params }: { params: Promise<{ eventId:
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) setMessage(body.message ?? `Something went wrong (${res.status}). Please try again.`);
-      else refresh();
+      await refresh();
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   }
