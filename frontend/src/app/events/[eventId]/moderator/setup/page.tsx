@@ -8,6 +8,7 @@ import { HeaderBanner } from "@/components/theme/HeaderBanner";
 import { Panel, PanelTitle, WoodButton } from "@/components/theme/Panel";
 import { ConfirmDialog, type ConfirmDialogState } from "@/components/theme/ConfirmDialog";
 import { fetchEventOverviewFresh } from "@/lib/use-event-overview";
+import { RULES_CONTENT_STAGES, RULES_STAGE_LABELS, defaultRulesForStage, parseRulesContent, type RulesContentStage } from "@/lib/rules-content";
 
 // Section 7.8 "Event Setup" nav item. Materials/recipes/shocks/cities are
 // seeded from packages/db/seed (Phase 0) rather than authored through a
@@ -101,6 +102,25 @@ export default function ModeratorSetupPage({ params }: { params: Promise<{ event
   const [gameSettingsBusy, setGameSettingsBusy] = useState(false);
   const [gameSettingsMessage, setGameSettingsMessage] = useState<string | null>(null);
 
+  // The actual bulleted rule lines shown under each stage heading on
+  // the Rules page - add/edit/delete any line, in any stage, purely as
+  // displayed text. Deliberately separate from settingsForm above (the
+  // numbers that DO change gameplay) and from customRulesNote (one
+  // free-text blob) - this edits the structured per-stage bullets
+  // themselves. Seeded once from whatever's live right now (the admin's
+  // own saved lines if any exist, otherwise today's auto-generated
+  // text) so editing always starts from what a team would currently see,
+  // never a blank page.
+  const [rulesContentForm, setRulesContentForm] = useState<Record<RulesContentStage, string[]>>({
+    stage1: [],
+    stage2: [],
+    stage3: [],
+    tiebreakers: [],
+  });
+  const [rulesContentLoaded, setRulesContentLoaded] = useState(false);
+  const [rulesContentBusy, setRulesContentBusy] = useState(false);
+  const [rulesContentMessage, setRulesContentMessage] = useState<string | null>(null);
+
   const refresh = useCallback(async () => {
     try {
       setOverview(await fetchEventOverviewFresh(eventId));
@@ -159,6 +179,19 @@ export default function ModeratorSetupPage({ params }: { params: Promise<{ event
     }
   }, [overview, settingsLoaded]);
 
+  useEffect(() => {
+    if (overview?.settings && !rulesContentLoaded) {
+      const s = overview.settings;
+      const custom = parseRulesContent(s.rulesContent);
+      const seeded = {} as Record<RulesContentStage, string[]>;
+      for (const stage of RULES_CONTENT_STAGES) {
+        seeded[stage] = custom[stage] ?? defaultRulesForStage(stage, s);
+      }
+      setRulesContentForm(seeded);
+      setRulesContentLoaded(true);
+    }
+  }, [overview, rulesContentLoaded]);
+
   const INTEGER_SETTINGS_FIELDS: Array<[string, string]> = [
     ["stage1StartingTokens", "Stage 1 starting tokens"],
     ["cityWalletTokens", "City wallet tokens"],
@@ -210,6 +243,48 @@ export default function ModeratorSetupPage({ params }: { params: Promise<{ event
     } finally {
       setSettingsBusy(false);
     }
+  }
+
+  // Add/edit/delete any rule line, in any stage, purely as displayed
+  // text - the actual feature request this panel exists for. Sends the
+  // whole rulesContentForm object; updateEventSettings validates it's
+  // shaped as {stage1: string[], stage2: string[], ...} and stores it
+  // as one JSON column, entirely independent of every settings field
+  // above - saving this can never change how the game plays.
+  async function saveRulesContent() {
+    if (rulesContentBusy) return;
+    setRulesContentBusy(true);
+    setRulesContentMessage(null);
+    try {
+      const res = await fetch(`/api/events/${eventId}/settings`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ rulesContent: rulesContentForm }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) setRulesContentMessage(body.message ?? `Something went wrong (${res.status}). Please try again.`);
+      else {
+        setRulesContentMessage("Rules content saved.");
+        refresh();
+      }
+    } finally {
+      setRulesContentBusy(false);
+    }
+  }
+
+  function resetStageToDefault(stage: RulesContentStage) {
+    if (!overview?.settings) return;
+    setRulesContentForm((f) => ({ ...f, [stage]: defaultRulesForStage(stage, overview.settings) }));
+  }
+
+  function updateRuleLine(stage: RulesContentStage, index: number, text: string) {
+    setRulesContentForm((f) => ({ ...f, [stage]: f[stage].map((l, i) => (i === index ? text : l)) }));
+  }
+  function deleteRuleLine(stage: RulesContentStage, index: number) {
+    setRulesContentForm((f) => ({ ...f, [stage]: f[stage].filter((_, i) => i !== index) }));
+  }
+  function addRuleLine(stage: RulesContentStage) {
+    setRulesContentForm((f) => ({ ...f, [stage]: [...f[stage], ""] }));
   }
 
   // Separate from saveRulesText on purpose: these numbers ARE read by the
@@ -592,6 +667,55 @@ export default function ModeratorSetupPage({ params }: { params: Promise<{ event
               {settingsBusy ? "Saving…" : "Save rules text"}
             </WoodButton>
             {settingsMessage && <p className="text-yellow-300 mt-3">{settingsMessage}</p>}
+          </>
+        )}
+      </Panel>
+
+      <Panel className="w-full max-w-lg mt-4 border-2 border-yellow-600">
+        <PanelTitle>EDIT RULES CONTENT</PanelTitle>
+        <p className="text-white/70 text-sm mb-3">
+          Add, edit, or delete any individual line under any stage heading on the Rules page. Purely what&apos;s
+          displayed - a stage you haven&apos;t touched still shows its normal auto-generated text; the moment you
+          edit and save a stage here, your own lines take over for it and stop tracking the settings below, even if
+          those change later. &quot;Reset to auto-generated&quot; brings a stage back to that live-computed text.
+        </p>
+        {!rulesContentLoaded ? (
+          <p className="text-white/70">Loading…</p>
+        ) : (
+          <>
+            {RULES_CONTENT_STAGES.map((stage) => (
+              <div key={stage} className="mb-4 pb-4 border-b border-white/10 last:border-b-0">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-yellow-300 text-sm font-bold">{RULES_STAGE_LABELS[stage]}</label>
+                  <button type="button" onClick={() => resetStageToDefault(stage)} className="text-xs text-white/60 hover:text-white underline">
+                    Reset to auto-generated
+                  </button>
+                </div>
+                <div className="space-y-1">
+                  {rulesContentForm[stage].map((line, i) => (
+                    <div key={i} className="flex gap-2 items-center">
+                      <input
+                        value={line}
+                        onChange={(e) => updateRuleLine(stage, i, e.target.value)}
+                        maxLength={300}
+                        className="flex-1 px-2 py-1 rounded text-black text-sm"
+                      />
+                      <WoodButton variant="danger" className="px-2 py-1 text-xs" onClick={() => deleteRuleLine(stage, i)}>
+                        Delete
+                      </WoodButton>
+                    </div>
+                  ))}
+                  {rulesContentForm[stage].length === 0 && <p className="text-white/50 text-xs">No lines - this section will show empty on the Rules page.</p>}
+                </div>
+                <WoodButton className="mt-2 text-xs px-2 py-1" onClick={() => addRuleLine(stage)}>
+                  + Add line
+                </WoodButton>
+              </div>
+            ))}
+            <WoodButton variant="primary" disabled={rulesContentBusy} onClick={saveRulesContent}>
+              {rulesContentBusy ? "Saving…" : "Save rules content"}
+            </WoodButton>
+            {rulesContentMessage && <p className="text-yellow-300 mt-3">{rulesContentMessage}</p>}
           </>
         )}
       </Panel>

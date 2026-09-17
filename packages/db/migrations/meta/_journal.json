@@ -50,6 +50,13 @@
       "when": 1789376413838,
       "tag": "0006_rules_note_and_cascades",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1789629801464,
+      "tag": "0007_handy_cardiac",
+      "breakpoints": true
     }
   ]
 }

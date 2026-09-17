@@ -219,4 +219,42 @@ describe("updateEventSettings", () => {
       engine.updateEventSettings({ eventId: event.id, actorParticipantId: moderator.id, updates: { tradeLimit: -1 } }),
     ).rejects.toMatchObject({ code: "invalid_input" });
   });
+
+  it("edits rulesContent (the Rules page's actual bullet lines) independently of every settings field, and validates its shape", async () => {
+    const [event] = await dbModule.db.insert(schema.events).values({ name: "Rules Content Test" }).returning();
+    await dbModule.db.insert(schema.eventSettings).values({ eventId: event.id, tradeLimit: 4 });
+    const [moderator] = await dbModule.db
+      .insert(schema.participants)
+      .values({ name: "Mod", email: `mod-rc-${event.id}@test.local`, username: `mod-rc-${event.id}`, passwordHash: "$2a$10$CwTycUXWue0Thq9StjUM0uJ8oxL/Yjyq6XvXqAtVvjGdiWZOWXQNi" })
+      .returning();
+    await dbModule.db.insert(schema.eventStaff).values({ eventId: event.id, participantId: moderator.id, role: "staff" });
+
+    const updated = await engine.updateEventSettings({
+      eventId: event.id,
+      actorParticipantId: moderator.id,
+      updates: { rulesContent: { stage1: ["Custom line one", "Custom line two"], tiebreakers: [] } },
+    });
+    expect(JSON.parse(updated.rulesContent)).toEqual({ stage1: ["Custom line one", "Custom line two"], tiebreakers: [] });
+    // Saving rulesContent must never touch any actual gameplay field.
+    expect(updated.tradeLimit).toBe(4);
+
+    // Rejects an unknown stage key instead of silently accepting it.
+    await expect(
+      engine.updateEventSettings({ eventId: event.id, actorParticipantId: moderator.id, updates: { rulesContent: { notARealStage: ["x"] } } }),
+    ).rejects.toMatchObject({ code: "invalid_input" });
+
+    // Rejects a non-array value for a stage.
+    await expect(
+      engine.updateEventSettings({ eventId: event.id, actorParticipantId: moderator.id, updates: { rulesContent: { stage1: "not an array" } } }),
+    ).rejects.toMatchObject({ code: "invalid_input" });
+
+    // Rejects a line that's too long rather than truncating it silently.
+    await expect(
+      engine.updateEventSettings({ eventId: event.id, actorParticipantId: moderator.id, updates: { rulesContent: { stage1: ["x".repeat(301)] } } }),
+    ).rejects.toMatchObject({ code: "invalid_input" });
+
+    // null clears it back to "use the auto-generated default".
+    const cleared = await engine.updateEventSettings({ eventId: event.id, actorParticipantId: moderator.id, updates: { rulesContent: null } });
+    expect(cleared.rulesContent).toBeNull();
+  });
 });

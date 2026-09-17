@@ -84,6 +84,18 @@ export const eventSettings = pgTable("event_settings", {
   // Every other field on this row already drives the Rules page's
   // generated bullet points; this is the one place for plain prose.
   customRulesNote: text("custom_rules_note"),
+  // The actual bulleted rule lines shown under each stage heading on
+  // the Rules page, as JSON: {stage1: string[], stage2: string[],
+  // stage3: string[], tiebreakers: string[]}. Deliberately independent
+  // of every numeric/boolean field above and every other column on this
+  // row - editing this changes ONLY what's displayed here, never any
+  // actual game behavior. NULL means "show the auto-generated bullets
+  // computed from the settings above" (today's original behavior); once
+  // an admin edits and saves rule content, this column becomes the
+  // source of truth and stops tracking the live settings values, even
+  // if those change afterward - the two are deliberately decoupled once
+  // a moderator has taken ownership of the wording.
+  rulesContent: text("rules_content"),
 });
 
 // event_staff: staff assigned to run a specific event (the "moderator"

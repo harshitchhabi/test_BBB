@@ -4,6 +4,7 @@ import { use, useEffect, useState } from "react";
 import { useSession } from "@/lib/use-session";
 import { FetchJsonError } from "@/lib/fetch-json";
 import { fetchEventOverviewFresh } from "@/lib/use-event-overview";
+import { defaultRulesForStage, parseRulesContent, type RulesContentStage } from "@/lib/rules-content";
 import { TeamNav } from "../team-nav";
 import { PageFrame } from "@/components/theme/PageFrame";
 
@@ -18,9 +19,10 @@ const STAGE_LABELS: Record<string, string> = {
 };
 
 // Section 7.1 "Rules" — same wooden-frame + rules/heading.png banner as
-// the legacy rules page, but every number is read live from this event's
-// own event_settings row instead of the legacy's hard-coded static text
-// (Section 3 gap assessment).
+// the legacy rules page. Every bullet is either an admin's own edited
+// line (event_settings.rules_content) or, absent that, the original
+// auto-generated text computed live from event_settings — see
+// defaultRulesForStage above.
 export default function RulesPage({ params }: { params: Promise<{ eventId: string }> }) {
   const { eventId } = use(params);
   const { status } = useSession();
@@ -38,6 +40,8 @@ export default function RulesPage({ params }: { params: Promise<{ eventId: strin
   if (loadError && !overview) return <PageFrame><p className="text-red-100 bg-red-950/80 px-3 py-2 rounded-md font-medium text-center mt-8">{loadError}</p></PageFrame>;
   if (!overview) return <PageFrame><p className="text-[#F1EBB5]">Loading…</p></PageFrame>;
   const s = overview.settings;
+  const customContent = parseRulesContent(s.rulesContent);
+  const linesFor = (stage: RulesContentStage) => customContent[stage] ?? defaultRulesForStage(stage, s);
 
   return (
     <PageFrame>
@@ -68,33 +72,22 @@ export default function RulesPage({ params }: { params: Promise<{ eventId: strin
 
         <h2 className="text-yellow-300 font-bold text-lg mb-2">Stage 1: Material Auction</h2>
         <ul className="list-disc list-inside mb-4">
-          <li>Starting tokens: {s.stage1StartingTokens}</li>
-          <li>Minimum raise: {s.minimumRaiseStandard} tokens ({s.minimumRaiseLowOpening} if opening bid is below {s.lowOpeningThreshold})</li>
-          <li>Lot duration: {s.auctionLotDurationSeconds} seconds</li>
+          {linesFor("stage1").map((line, i) => <li key={i}>{line}</li>)}
         </ul>
 
         <h2 className="text-yellow-300 font-bold text-lg mb-2">Stage 2: Trade and Build</h2>
         <ul className="list-disc list-inside mb-4">
-          <li>Trade limit: {s.tradeLimit} per team</li>
-          <li>Bank tax: {s.normalBankTaxPercent}% normal, {s.rareBankTaxPercent}% on rare materials</li>
-          <li>Inspections: {s.inspectionsEnabled ? `enabled (${s.inspectionCost} tokens, ${s.inspectionLimitPerTeam} per team)` : "disabled"}</li>
-          <li>Leftover material scoring: {s.leftoverScoringEnabled ? `enabled (${s.leftoverUnitsPerPoint} units = 1 point)` : "disabled"}</li>
+          {linesFor("stage2").map((line, i) => <li key={i}>{line}</li>)}
         </ul>
 
         <h2 className="text-yellow-300 font-bold text-lg mb-2">Stage 3: City Auction</h2>
         <ul className="list-disc list-inside mb-4">
-          <li>City wallet: {s.cityWalletTokens} tokens</li>
-          <li>Minimum raise: {s.cityMinimumRaise} tokens</li>
-          <li>Auction duration: {s.cityAuctionDurationSeconds} seconds</li>
-          <li>Scout reports: {s.scoutReportsEnabled ? `enabled (${s.scoutReportCost} tokens, max ${s.scoutReportLimit} per team)` : "disabled"}</li>
-          <li>Scoring mode: {s.advancedCityScoringEnabled ? "advanced (preferred building types only)" : "standard"}</li>
+          {linesFor("stage3").map((line, i) => <li key={i}>{line}</li>)}
         </ul>
 
         <h2 className="text-yellow-300 font-bold text-lg mb-2">Tiebreakers</h2>
         <ol className="list-decimal list-inside">
-          <li>Most buildings constructed</li>
-          <li>Most valuable single building</li>
-          <li>Most unspent tokens (city wallet + leftover)</li>
+          {linesFor("tiebreakers").map((line, i) => <li key={i}>{line}</li>)}
         </ol>
       </div>
     </PageFrame>

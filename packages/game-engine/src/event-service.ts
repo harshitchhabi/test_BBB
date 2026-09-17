@@ -348,10 +348,43 @@ type EditableBooleanField = (typeof EDITABLE_BOOLEAN_FIELDS)[number];
 
 const MAX_RULES_NOTE_LENGTH = 4000;
 
+// The actual editable bullet lines under each Rules-page stage heading —
+// deliberately just free text, not tied to any settings field above, so
+// editing this can never change how the game plays, only what's shown.
+const RULES_CONTENT_STAGES = ["stage1", "stage2", "stage3", "tiebreakers"] as const;
+type RulesContentStage = (typeof RULES_CONTENT_STAGES)[number];
+export type RulesContent = Partial<Record<RulesContentStage, string[]>>;
+const MAX_RULE_LINE_LENGTH = 300;
+const MAX_RULE_LINES_PER_STAGE = 50;
+
+function validateRulesContent(value: unknown): RulesContent {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new GameError("invalid_input", "Rules content must be an object keyed by stage.");
+  }
+  const result: RulesContent = {};
+  for (const [key, lines] of Object.entries(value as Record<string, unknown>)) {
+    if (!RULES_CONTENT_STAGES.includes(key as RulesContentStage)) {
+      throw new GameError("invalid_input", `"${key}" is not a valid rules section (expected one of ${RULES_CONTENT_STAGES.join(", ")}).`);
+    }
+    if (!Array.isArray(lines) || lines.some((l) => typeof l !== "string")) {
+      throw new GameError("invalid_input", `The "${key}" section must be a list of text lines.`);
+    }
+    if (lines.length > MAX_RULE_LINES_PER_STAGE) {
+      throw new GameError("invalid_input", `The "${key}" section can have at most ${MAX_RULE_LINES_PER_STAGE} lines.`);
+    }
+    if (lines.some((l: string) => l.length > MAX_RULE_LINE_LENGTH)) {
+      throw new GameError("invalid_input", `Each line in "${key}" must be ${MAX_RULE_LINE_LENGTH} characters or fewer.`);
+    }
+    result[key as RulesContentStage] = lines as string[];
+  }
+  return result;
+}
+
 export async function updateEventSettings(params: {
   eventId: string;
   actorParticipantId: string;
-  updates: Partial<Record<EditableIntegerField, number>> & Partial<Record<EditableBooleanField, boolean>> & { customRulesNote?: string | null };
+  updates: Partial<Record<EditableIntegerField, number>> &
+    Partial<Record<EditableBooleanField, boolean>> & { customRulesNote?: string | null; rulesContent?: RulesContent | null };
 }) {
   return runInTransaction(async (tx) => {
     await assertStaffTx(tx, params.eventId, params.actorParticipantId);
@@ -380,6 +413,9 @@ export async function updateEventSettings(params: {
         throw new GameError("invalid_input", `The rules note must be ${MAX_RULES_NOTE_LENGTH} characters or fewer.`);
       }
       patch.customRulesNote = note;
+    }
+    if (params.updates.rulesContent !== undefined) {
+      patch.rulesContent = params.updates.rulesContent === null ? null : JSON.stringify(validateRulesContent(params.updates.rulesContent));
     }
     if (Object.keys(patch).length === 0) {
       throw new GameError("invalid_input", "No valid settings fields were provided.");

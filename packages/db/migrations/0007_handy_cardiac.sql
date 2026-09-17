@@ -1,0 +1,1 @@
+ALTER TABLE "event_settings" ADD COLUMN "rules_content" text;
