@@ -292,6 +292,14 @@ export default function TradeBuildPage({ params }: { params: Promise<{ eventId: 
   // right now, not accumulate every trade ever made as history clutter.
   const OPEN_TRADE_STATUSES = ["submitted", "accepted", "registered"];
   const openTrades = myTrades.filter((t: any) => OPEN_TRADE_STATUSES.includes(t.status));
+  // Trading (propose/accept/decline) is server-enforced to Stage 2 only
+  // (trade-service.ts's proposeTrade) - gating the form here too means a
+  // team sees why up front instead of filling it out and only finding
+  // out on submit. The Build Desk below is deliberately NOT gated the
+  // same way: recipes are shown from the very start so a team knows what
+  // to bid on materials for during Stage 1, even though constructBuilding
+  // itself still only runs during Stage 2.
+  const tradingOpen = overview.event.status === "stage_2";
 
   return (
     <PageFrame>
@@ -303,7 +311,13 @@ export default function TradeBuildPage({ params }: { params: Promise<{ eventId: 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full">
         <Panel>
           <PanelTitle>TRADE DESK - {overview.settings.tradeLimit - overview.myTeam.tradeCount} REMAINING</PanelTitle>
-          {overview.myRole === "leader" ? (
+          {!tradingOpen && (
+            <p className="text-yellow-300 text-sm mb-4">
+              Trading is only open during Stage 2 - you can browse what's happening here, but proposing, accepting,
+              or declining a trade will open up once Stage 2 begins.
+            </p>
+          )}
+          {tradingOpen && overview.myRole === "leader" ? (
             <div className="bg-[#764A21]/40 rounded-lg p-4 mb-4">
               <select value={counterpartyTeamId} onChange={(e) => setCounterpartyTeamId(e.target.value)} className="w-full mb-2 px-2 py-1 rounded text-black">
                 <option value="">Trade with…</option>
@@ -386,7 +400,7 @@ export default function TradeBuildPage({ params }: { params: Promise<{ eventId: 
               )}
             </div>
           ) : (
-            <p className="text-[#F1EBB5] mb-4">Only your team leader can propose a trade.</p>
+            tradingOpen && <p className="text-[#F1EBB5] mb-4">Only your team leader can propose a trade.</p>
           )}
 
           {pendingTrades.length > 0 && overview.myRole === "leader" && (

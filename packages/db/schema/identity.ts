@@ -156,6 +156,33 @@ export const teams = pgTable(
   }),
 );
 
+// event_spectators: a read-only login for someone who is neither on a
+// team nor staff (e.g. a screen at the front of the room, a family
+// member watching along) — sees only the live auction/city-auction
+// status (current stage, live lot/city, current bid, current leader),
+// never any team's balance, inventory, or trade activity. Distinct from
+// both team_members and event_staff, same shape as event_staff since
+// there's no sub-role to track.
+export const eventSpectators = pgTable(
+  "event_spectators",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    eventId: uuid("event_id")
+      .notNull()
+      .references(() => events.id, { onDelete: "cascade" }),
+    participantId: uuid("participant_id")
+      .notNull()
+      .references(() => participants.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => ({
+    eventParticipantUnique: uniqueIndex("event_spectators_event_participant_unique").on(
+      table.eventId,
+      table.participantId,
+    ),
+  }),
+);
+
 export const teamMembers = pgTable(
   "team_members",
   {

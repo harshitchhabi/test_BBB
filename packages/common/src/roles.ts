@@ -20,6 +20,9 @@ export interface ParticipantEventContext {
     teamId: string;
     role: TeamMemberRole;
   } | null;
+  // A read-only "view desk" login: neither staff nor on a team. See
+  // event_spectators in packages/db/schema/identity.ts.
+  isSpectator: boolean;
 }
 
 export function isStaff(ctx: ParticipantEventContext): boolean {

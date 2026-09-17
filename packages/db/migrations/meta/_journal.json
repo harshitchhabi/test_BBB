@@ -64,6 +64,13 @@
       "when": 1789633378104,
       "tag": "0008_pink_purple_man",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1789643898153,
+      "tag": "0009_chilly_gravity",
+      "breakpoints": true
     }
   ]
 }

@@ -79,6 +79,15 @@ export default function EventHomePage({ params }: { params: Promise<{ eventId: s
         </Panel>
       )}
 
+      {!overview.isStaff && !overview.myTeam && (
+        <Panel className="mb-6 border-2 border-yellow-400 w-full max-w-md text-center">
+          <p className="text-yellow-300 mb-2">You have a view-only spectator login for this event.</p>
+          <Link href={`/events/${eventId}/spectate`}>
+            <WoodButton variant="primary">Open View Desk →</WoodButton>
+          </Link>
+        </Panel>
+      )}
+
       <Panel className="mb-6">
         <div className="flex flex-wrap gap-2 justify-center items-center text-[#F1EBB5] text-sm md:text-base">
           {stageOrder.map((s, i) => (

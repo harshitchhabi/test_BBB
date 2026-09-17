@@ -275,3 +275,35 @@ describe("deleteStaffLogin", () => {
     expect(removed.participantId).toBe(second.staffRow.participantId);
   });
 });
+
+describe("Spectator logins (view desk)", () => {
+  it("only staff can mint one, and it resolves to neither staff nor a team", async () => {
+    const { event, moderator, teamA } = await createTestFixture(dbModule.db);
+
+    await expect(
+      engine.createSpectatorLogin({ eventId: event.id, actorParticipantId: teamA.member.id, name: "Front Desk Screen", username: `spectator-nope-${event.id.slice(0, 8)}` }),
+    ).rejects.toMatchObject({ code: "forbidden" });
+
+    const created = await engine.createSpectatorLogin({ eventId: event.id, actorParticipantId: moderator.id, name: "Front Desk Screen", username: `spectator-${event.id.slice(0, 8)}` });
+    expect(created.spectatorRow.eventId).toBe(event.id);
+
+    const ctx = await engine.getParticipantContext(event.id, created.spectatorRow.participantId);
+    expect(ctx.isSpectator).toBe(true);
+    expect(ctx.staffRole).toBeNull();
+    expect(ctx.team).toBeNull();
+  });
+
+  it("deleteSpectatorLogin releases the username without requiring any spectators to remain", async () => {
+    const { event, moderator } = await createTestFixture(dbModule.db);
+    const created = await engine.createSpectatorLogin({ eventId: event.id, actorParticipantId: moderator.id, name: "Lobby TV", username: `spectator2-${event.id.slice(0, 8)}` });
+
+    const removed = await engine.deleteSpectatorLogin({ eventId: event.id, actorParticipantId: moderator.id, participantId: created.spectatorRow.participantId, reason: "Event over" });
+    expect(removed.removed).toBe(true);
+
+    const ctxAfter = await engine.getParticipantContext(event.id, created.spectatorRow.participantId);
+    expect(ctxAfter.isSpectator).toBe(false);
+
+    const [participantAfter] = await dbModule.db.select().from(schema.participants).where(dbModule.eq(schema.participants.id, created.spectatorRow.participantId));
+    expect(participantAfter.username).toMatch(/^released-/);
+  });
+});

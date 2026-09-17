@@ -42,6 +42,16 @@ export default function ModeratorSetupPage({ params }: { params: Promise<{ event
   const [staffList, setStaffList] = useState<Array<{ participantId: string; name: string; username: string }> | null>(null);
   const [staffListError, setStaffListError] = useState<string | null>(null);
   const [removeBusy, setRemoveBusy] = useState(false);
+
+  const [spectatorName, setSpectatorName] = useState("");
+  const [spectatorUsername, setSpectatorUsername] = useState("");
+  const [spectatorPassword, setSpectatorPassword] = useState("");
+  const [spectatorBusy, setSpectatorBusy] = useState(false);
+  const [spectatorMessage, setSpectatorMessage] = useState<string | null>(null);
+  const [issuedSpectatorCredential, setIssuedSpectatorCredential] = useState<{ username: string; password: string } | null>(null);
+  const [spectatorList, setSpectatorList] = useState<Array<{ participantId: string; name: string; username: string }> | null>(null);
+  const [spectatorListError, setSpectatorListError] = useState<string | null>(null);
+  const [removeSpectatorBusy, setRemoveSpectatorBusy] = useState(false);
   const [confirmState, setConfirmState] = useState<ConfirmDialogState | null>(null);
 
   const [overview, setOverview] = useState<any>(null);
@@ -142,25 +152,39 @@ export default function ModeratorSetupPage({ params }: { params: Promise<{ event
     }
   }, [eventId]);
 
+  const refreshSpectatorList = useCallback(async () => {
+    const res = await fetch(`/api/events/${eventId}/spectator-logins`);
+    const body = await res.json().catch(() => null);
+    if (res.ok) {
+      setSpectatorList(body.spectators);
+      setSpectatorListError(null);
+    } else {
+      setSpectatorListError(body?.message ?? `Couldn't load spectator logins (${res.status}).`);
+    }
+  }, [eventId]);
+
   useEffect(() => {
     if (sessionStatus === "authenticated") {
       refresh();
       refreshStaffList();
+      refreshSpectatorList();
     }
-  }, [sessionStatus, refresh, refreshStaffList]);
+  }, [sessionStatus, refresh, refreshStaffList, refreshSpectatorList]);
   // This screen never listened for live updates at all - a second
   // moderator creating/removing staff, or any other broadcast-worthy
   // change, was invisible here without a manual reload.
   const { connected } = useEventSocket(sessionStatus === "authenticated" ? eventId : null, () => {
     refresh();
     refreshStaffList();
+    refreshSpectatorList();
   });
   useEffect(() => {
     if (connected) {
       refresh();
       refreshStaffList();
+      refreshSpectatorList();
     }
-  }, [connected, refresh, refreshStaffList]);
+  }, [connected, refresh, refreshStaffList, refreshSpectatorList]);
 
   useEffect(() => {
     if (overview?.settings && !settingsLoaded) {
@@ -388,6 +412,59 @@ export default function ModeratorSetupPage({ params }: { params: Promise<{ event
       }
     } finally {
       setStaffBusy(false);
+    }
+  }
+
+  function removeSpectator(participantId: string, name: string) {
+    if (removeSpectatorBusy) return;
+    setConfirmState({
+      title: "Remove spectator login",
+      message: `Remove spectator login "${name}"? This frees the username for reuse.`,
+      confirmLabel: "Remove",
+      danger: true,
+      onConfirm: (reason) => doRemoveSpectator(participantId, reason),
+    });
+  }
+
+  async function doRemoveSpectator(participantId: string, reason: string) {
+    setRemoveSpectatorBusy(true);
+    try {
+      const res = await fetch(`/api/events/${eventId}/spectator-logins/${participantId}`, {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ reason }),
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) setSpectatorListError(body?.message ?? "Couldn't remove that spectator login.");
+      else refreshSpectatorList();
+    } finally {
+      setRemoveSpectatorBusy(false);
+    }
+  }
+
+  async function addSpectator() {
+    if (spectatorBusy) return;
+    setSpectatorBusy(true);
+    setSpectatorMessage(null);
+    setIssuedSpectatorCredential(null);
+    try {
+      const res = await fetch(`/api/events/${eventId}/spectator-logins`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: spectatorName, username: spectatorUsername, password: spectatorPassword || undefined }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setSpectatorMessage(body.message ?? `Something went wrong (${res.status}). Please try again.`);
+      } else {
+        setIssuedSpectatorCredential({ username: body.username, password: body.password });
+        setSpectatorName("");
+        setSpectatorUsername("");
+        setSpectatorPassword("");
+        refreshSpectatorList();
+      }
+    } finally {
+      setSpectatorBusy(false);
     }
   }
 
@@ -650,6 +727,58 @@ export default function ModeratorSetupPage({ params }: { params: Promise<{ event
                   {s.name} <span className="text-white/60">({s.username})</span>
                 </span>
                 <WoodButton variant="danger" disabled={removeBusy} onClick={() => removeStaff(s.participantId, s.name)}>
+                  Remove
+                </WoodButton>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Panel>
+
+      <Panel className="w-full max-w-lg mt-4">
+        <PanelTitle>CREATE A SPECTATOR (VIEW DESK) LOGIN</PanelTitle>
+        <p className="text-white/70 text-sm mb-3">
+          A read-only login for someone who is neither on a team nor staff - shows only the current stage and the
+          live auction/city auction with its current bid and current leader, nothing about any team&apos;s balance,
+          inventory, or trades.
+        </p>
+        <div className="flex gap-2 flex-wrap">
+          <input value={spectatorName} onChange={(e) => setSpectatorName(e.target.value)} placeholder="Name (e.g. 'Lobby TV')" className="flex-1 min-w-40 px-3 py-2 rounded text-black" />
+          <input value={spectatorUsername} onChange={(e) => setSpectatorUsername(e.target.value)} placeholder="username" className="flex-1 min-w-32 px-3 py-2 rounded text-black" />
+          <input
+            value={spectatorPassword}
+            onChange={(e) => setSpectatorPassword(e.target.value)}
+            placeholder="password (optional - auto-generated if left blank)"
+            className="flex-1 min-w-64 px-3 py-2 rounded text-black"
+          />
+          <WoodButton variant="primary" onClick={addSpectator} disabled={spectatorBusy || !spectatorName || !spectatorUsername}>
+            {spectatorBusy ? "Creating…" : "Create"}
+          </WoodButton>
+        </div>
+        {spectatorMessage && <p className="text-red-100 bg-red-950/80 px-3 py-2 rounded-md font-medium mt-3">{spectatorMessage}</p>}
+        {issuedSpectatorCredential && (
+          <div className="mt-3 bg-black/40 rounded p-3 text-sm">
+            <p className="text-yellow-300 font-bold">Shown once - write it down now:</p>
+            <p className="text-white">
+              Username: <strong>{issuedSpectatorCredential.username}</strong> · Password: <strong>{issuedSpectatorCredential.password}</strong>
+            </p>
+          </div>
+        )}
+      </Panel>
+
+      <Panel className="w-full max-w-lg mt-4">
+        <PanelTitle>CURRENT SPECTATOR LOGINS</PanelTitle>
+        {spectatorListError && <p className="text-red-100 bg-red-950/80 px-3 py-2 rounded-md font-medium mb-2">{spectatorListError}</p>}
+        {!spectatorListError && !spectatorList && <p className="text-white/70">Loading…</p>}
+        {spectatorList && spectatorList.length === 0 && <p className="text-white/70">No spectator logins yet.</p>}
+        {spectatorList && spectatorList.length > 0 && (
+          <ul className="divide-y divide-white/10">
+            {spectatorList.map((s) => (
+              <li key={s.participantId} className="flex items-center justify-between gap-2 py-2">
+                <span className="text-white">
+                  {s.name} <span className="text-white/60">({s.username})</span>
+                </span>
+                <WoodButton variant="danger" disabled={removeSpectatorBusy} onClick={() => removeSpectator(s.participantId, s.name)}>
                   Remove
                 </WoodButton>
               </li>

@@ -1,5 +1,5 @@
 import { db, eq, and, sql } from "db";
-import { events, eventSettings, eventStaff, teams, teamMembers, participants } from "db/schema";
+import { events, eventSettings, eventStaff, eventSpectators, teams, teamMembers, participants } from "db/schema";
 import type { ParticipantEventContext } from "common";
 import { GameError } from "./errors";
 import { recordAudit } from "./audit";
@@ -86,11 +86,17 @@ export async function getParticipantContext(
     .from(teamMembers)
     .where(and(eq(teamMembers.eventId, eventId), eq(teamMembers.participantId, participantId)));
 
+  const [spectatorRow] = await db
+    .select({ id: eventSpectators.id })
+    .from(eventSpectators)
+    .where(and(eq(eventSpectators.eventId, eventId), eq(eventSpectators.participantId, participantId)));
+
   return {
     participantId,
     eventId,
     staffRole: staffRow?.role ?? null,
     team: memberRow ? { teamId: memberRow.teamId, role: memberRow.role } : null,
+    isSpectator: Boolean(spectatorRow),
   };
 }
 
@@ -321,6 +327,87 @@ export async function createStaffLogin(params: {
   });
 }
 
+// Staff-only: mints a read-only "view desk" login — sees the live
+// auction/city-auction status (Section 7.3-style summary) and nothing
+// else, no team balances, inventory, or trade activity. Same shape as
+// createStaffLogin/createTeamLogin (new participant + role row in one
+// transaction), but with no bootstrap special case: staff must already
+// exist to create one, since a spectator login is never load-bearing for
+// the event to run.
+export async function createSpectatorLogin(params: {
+  eventId: string;
+  actorParticipantId: string;
+  name: string;
+  username: string;
+  password?: string;
+}) {
+  return runInTransaction(async (tx, queueBroadcast) => {
+    await assertStaffTx(tx, params.eventId, params.actorParticipantId);
+
+    const { participant, password } = await createLoginTx(tx, { name: params.name, username: params.username, password: params.password });
+
+    const [spectatorRow] = await tx
+      .insert(eventSpectators)
+      .values({ eventId: params.eventId, participantId: participant.id })
+      .returning();
+
+    await recordAudit(tx, {
+      eventId: params.eventId,
+      actorParticipantId: params.actorParticipantId,
+      action: "spectator_login.created",
+      entityType: "event_spectator",
+      entityId: spectatorRow.id,
+      afterJson: { name: params.name, username: participant.username },
+    });
+
+    queueBroadcast({ eventId: params.eventId, type: "moderator.announcement", data: { createdSpectatorParticipantId: participant.id, createdSpectatorName: params.name } });
+    return { spectatorRow, username: participant.username, password };
+  });
+}
+
+// Staff-only: removes a spectator login's access to this event and frees
+// its username for reuse — same released-login pattern as
+// deleteStaffLogin, minus the "can't remove the last one" guard, since
+// unlike staff, an event with zero spectator logins is completely normal.
+export async function deleteSpectatorLogin(params: {
+  eventId: string;
+  actorParticipantId: string;
+  participantId: string;
+  reason?: string;
+}) {
+  return runInTransaction(async (tx) => {
+    await assertStaffTx(tx, params.eventId, params.actorParticipantId);
+
+    const [spectatorRow] = await tx
+      .select()
+      .from(eventSpectators)
+      .where(and(eq(eventSpectators.eventId, params.eventId), eq(eventSpectators.participantId, params.participantId)))
+      .for("update");
+    if (!spectatorRow) throw new GameError("not_found", "Spectator login not found for this event.");
+
+    const [participant] = await tx.select().from(participants).where(eq(participants.id, params.participantId)).for("update");
+    if (!participant) throw new GameError("not_found", "Login not found.");
+
+    await tx.delete(eventSpectators).where(eq(eventSpectators.id, spectatorRow.id));
+
+    const releasedUsername = `released-${participant.username}-${participant.id.slice(0, 8)}`;
+    const passwordHash = await hashPassword(generatePassword());
+    await tx.update(participants).set({ username: releasedUsername, passwordHash, sessionId: null }).where(eq(participants.id, participant.id));
+
+    await recordAudit(tx, {
+      eventId: params.eventId,
+      actorParticipantId: params.actorParticipantId,
+      reason: params.reason,
+      isOverride: true,
+      action: "spectator_login.deleted",
+      entityType: "event_spectator",
+      entityId: spectatorRow.id,
+    });
+
+    return { removed: true };
+  });
+}
+
 // Staff-only: regenerates a login's password (team or staff — either is
 // just a participants row) and clears its session, so whoever was
 // previously signed in with the old password is forced to sign in again
@@ -349,7 +436,11 @@ export async function resetLoginPassword(params: {
       .select({ id: eventStaff.id })
       .from(eventStaff)
       .where(and(eq(eventStaff.eventId, params.eventId), eq(eventStaff.participantId, params.participantId)));
-    if (!ownedTeam && !staffRow) throw new GameError("not_found", "Login not found.");
+    const [spectatorRow] = await tx
+      .select({ id: eventSpectators.id })
+      .from(eventSpectators)
+      .where(and(eq(eventSpectators.eventId, params.eventId), eq(eventSpectators.participantId, params.participantId)));
+    if (!ownedTeam && !staffRow && !spectatorRow) throw new GameError("not_found", "Login not found.");
 
     const password = generatePassword();
     const passwordHash = await hashPassword(password);
