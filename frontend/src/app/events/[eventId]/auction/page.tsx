@@ -112,6 +112,30 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ eventId:
   // already safe from actual harm either way: placeBid locks the lot
   // row and only ever deducts tokens at close time, so a redundant
   // second bid is just cleanly rejected, never a double-charge.
+  const [reservedKitBusy, setReservedKitBusy] = useState(false);
+  const [reservedKitMessage, setReservedKitMessage] = useState<string | null>(null);
+  const reservedKitBusyRef = useRef(false);
+  async function claimReservedKit() {
+    if (!state?.myTeamId || !state.activeRound || reservedKitBusyRef.current) return;
+    reservedKitBusyRef.current = true;
+    setReservedKitBusy(true);
+    setReservedKitMessage(null);
+    try {
+      const res = await fetch(`/api/events/${eventId}/reserved-kit`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ teamId: state.myTeamId, materialTypeId: state.activeRound.materialTypeId }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) setReservedKitMessage(body.message ?? `Couldn't claim it (${res.status}).`);
+      else setReservedKitMessage(`Claimed ${body.quantity} ${state.activeRound.materialName ?? "units"} for ${body.amount} tokens.`);
+      await refresh();
+    } finally {
+      reservedKitBusyRef.current = false;
+      setReservedKitBusy(false);
+    }
+  }
+
   const submittingRef = useRef(false);
   async function submitBid() {
     if (!state?.liveLot || !state.myTeamId || submittingRef.current) return;
@@ -188,6 +212,22 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ eventId:
                 <p className="text-yellow-300 mt-1">
                   {state.activeRound.shock.title} - {state.activeRound.shock.description}
                 </p>
+              )}
+              {state.activeRound.reservedKitEligible && state.activeRound.reservedKitWindowOpen && (
+                <div className="mt-3 bg-black/30 rounded p-3">
+                  <p className="text-yellow-300 text-sm mb-2">
+                    Reserved Kit: claim one lot of {state.activeRound.materialName} at its printed opening price, no bidding — only
+                    available until the first lot goes up for open bidding.
+                  </p>
+                  {state.myRole === "leader" ? (
+                    <WoodButton variant="primary" disabled={reservedKitBusy} onClick={claimReservedKit}>
+                      {reservedKitBusy ? "Claiming…" : "Claim Reserved Kit"}
+                    </WoodButton>
+                  ) : (
+                    <p className="text-[#F1EBB5] text-sm">Only your team leader can claim it.</p>
+                  )}
+                  {reservedKitMessage && <p className="text-yellow-100 text-sm mt-2">{reservedKitMessage}</p>}
+                </div>
               )}
             </Panel>
           )}

@@ -32,9 +32,17 @@ export async function GET(_req: Request, { params }: { params: Promise<{ eventId
     let activeRound: {
       id: string;
       sequence: number;
+      materialTypeId?: string;
       materialKey?: string;
       materialName?: string;
       shock: { title: string; description: string } | null;
+      // Rulebook v2 Reserved Kit: only Bricks/Cement/Steel carry the
+      // right, and only until the first lot in this round has ever gone
+      // live — see claimReservedKit's own window check, mirrored here so
+      // the team-facing screen can show/hide the claim button without
+      // guessing.
+      reservedKitEligible?: boolean;
+      reservedKitWindowOpen?: boolean;
     } | null = null;
     let liveLot: {
       id: string;
@@ -62,7 +70,26 @@ export async function GET(_req: Request, { params }: { params: Promise<{ eventId
           const [card] = await db.select().from(marketShockCards).where(eq(marketShockCards.id, round.marketShockCardId));
           if (card) shock = { title: card.title, description: card.description };
         }
-        activeRound = { id: round.id, sequence: round.sequence, materialKey: material?.key, materialName: material?.name, shock };
+        let reservedKitWindowOpen = false;
+        if (material?.reservedKitEligible) {
+          const [everOpened] = await db
+            .select({ id: auctionLots.id })
+            .from(auctionLots)
+            .where(and(eq(auctionLots.roundId, round.id), sql`${auctionLots.status} != 'pending'`))
+            .limit(1);
+          reservedKitWindowOpen = !everOpened;
+        }
+
+        activeRound = {
+          id: round.id,
+          sequence: round.sequence,
+          materialTypeId: round.materialTypeId,
+          materialKey: material?.key,
+          materialName: material?.name,
+          shock,
+          reservedKitEligible: material?.reservedKitEligible ?? false,
+          reservedKitWindowOpen,
+        };
 
         const [pendingCountRow] = await db
           .select({ count: sql<number>`count(*)` })

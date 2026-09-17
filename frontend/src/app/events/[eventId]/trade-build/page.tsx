@@ -51,6 +51,11 @@ export default function TradeBuildPage({ params }: { params: Promise<{ eventId: 
   // Sentinel value, never a real team id - selecting it posts an OPEN
   // OFFER instead of a direct proposal (see submitTrade below).
   const OPEN_OFFER = "__open__";
+  // Sentinel value, never a real material id - selecting it makes a
+  // line trade TOKENS instead of a material ("credits for materials and
+  // vice versa" per the rulebook's leftover-tokens-are-spendable-
+  // anywhere model). Resolved to materialTypeId: null before submitting.
+  const TOKENS = "__tokens__";
   const [counterpartyTeamId, setCounterpartyTeamId] = useState("");
   const [tradeLines, setTradeLines] = useState<Array<{ fromMe: boolean; materialTypeId: string; quantity: string }>>([
     { fromMe: true, materialTypeId: "", quantity: "" },
@@ -115,6 +120,13 @@ export default function TradeBuildPage({ params }: { params: Promise<{ eventId: 
   // could never actually keep.
   function heldFor(line: { fromMe: boolean; materialTypeId: string }): number | null {
     if (!line.materialTypeId) return null;
+    if (line.materialTypeId === TOKENS) {
+      // Only ever cap against OUR OWN token balance - another team's
+      // token balance is private (same reasoning as its material
+      // inventory being the only thing shared), so a line where THEY
+      // give tokens is trusted to the server, uncapped here.
+      return line.fromMe ? (overview.myTeam?.auctionTokens ?? 0) : null;
+    }
     if (line.fromMe) return inventory.find((m: any) => m.materialTypeId === line.materialTypeId)?.quantity ?? 0;
     if (isOpenOfferSelected) return null; // "they" aren't a known team yet - nothing to cap against
     return counterpartyInventory?.materials.find((m: any) => m.materialTypeId === line.materialTypeId)?.quantity ?? 0;
@@ -153,7 +165,7 @@ export default function TradeBuildPage({ params }: { params: Promise<{ eventId: 
     try {
       const lines = completeLines.map((l) => ({
         fromTeamId: l.fromMe ? overview.myTeam.id : isOpenOfferSelected ? null : counterpartyTeamId,
-        materialTypeId: l.materialTypeId,
+        materialTypeId: l.materialTypeId === TOKENS ? null : l.materialTypeId,
         quantity: Number(l.quantity),
       }));
       const res = await fetch(`/api/events/${eventId}/trades`, {
@@ -358,6 +370,7 @@ export default function TradeBuildPage({ params }: { params: Promise<{ eventId: 
                       className="rounded px-1 text-black text-sm flex-1"
                     >
                       <option value="">material…</option>
+                      <option value={TOKENS}>Tokens (credits)</option>
                       {bankStock.map((m: any) => (
                         <option key={m.materialTypeId} value={m.materialTypeId}>{m.materialName}</option>
                       ))}
@@ -417,7 +430,7 @@ export default function TradeBuildPage({ params }: { params: Promise<{ eventId: 
                       </div>
                       <div className="text-white/80 mt-1">
                         {t.lines.map((l: any, i: number) => (
-                          <div key={i}>{l.fromTeamName ?? "Whoever accepts"} gives {l.quantity} {l.material?.name}</div>
+                          <div key={i}>{l.fromTeamName ?? "Whoever accepts"} gives {l.quantity} {l.material?.name ?? "tokens"}</div>
                         ))}
                       </div>
                       {isCounterparty ? (
@@ -457,7 +470,7 @@ export default function TradeBuildPage({ params }: { params: Promise<{ eventId: 
                       </div>
                       <div className="text-white/70 mt-1">
                         {t.lines.map((l: any, i: number) => (
-                          <div key={i}>{l.fromTeamName ?? "Whoever accepts"} gives {l.quantity} {l.material?.name}</div>
+                          <div key={i}>{l.fromTeamName ?? "Whoever accepts"} gives {l.quantity} {l.material?.name ?? "tokens"}</div>
                         ))}
                       </div>
                       {isOpen && overview.myRole === "leader" && (

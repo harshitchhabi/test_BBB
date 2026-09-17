@@ -95,6 +95,8 @@ async function seed(eventName: string, adminUsername?: string) {
           sortOrder: m.sortOrder,
           defaultLotQuantity: m.lotQuantity,
           defaultOpeningBid: m.openingBid,
+          splitLots: m.splitLots,
+          reservedKitEligible: m.reservedKitEligible,
         })),
       )
       .returning();

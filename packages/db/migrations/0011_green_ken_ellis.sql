@@ -1,0 +1,1 @@
+ALTER TABLE "trade_lines" ALTER COLUMN "material_type_id" DROP NOT NULL;

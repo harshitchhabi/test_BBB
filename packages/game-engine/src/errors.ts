@@ -13,6 +13,7 @@ export type GameErrorCode =
   | "lot_not_live"
   | "bid_too_low"
   | "insufficient_tokens"
+  | "lot_cap_reached"
   | "trade_limit_reached"
   | "recipe_incomplete"
   | "already_has_city"
@@ -37,6 +38,7 @@ export const HTTP_STATUS_BY_CODE: Record<GameErrorCode, number> = {
   lot_not_live: 409,
   bid_too_low: 400,
   insufficient_tokens: 400,
+  lot_cap_reached: 400,
   trade_limit_reached: 400,
   recipe_incomplete: 400,
   already_has_city: 409,

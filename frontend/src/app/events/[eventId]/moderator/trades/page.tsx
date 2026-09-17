@@ -75,7 +75,7 @@ export default function ModeratorTradesPage({ params }: { params: Promise<{ even
               </div>
               <div className="text-sm text-white/80 mt-1">
                 {t.lines.map((l: any, i: number) => (
-                  <div key={i}>{l.fromTeamName ?? "Whoever accepts"} gives {l.quantity} {l.material?.name}</div>
+                  <div key={i}>{l.fromTeamName ?? "Whoever accepts"} gives {l.quantity} {l.material?.name ?? "tokens"}</div>
                 ))}
               </div>
               {t.status === "submitted" && (

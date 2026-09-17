@@ -32,6 +32,18 @@ export const materialTypes = pgTable("material_types", {
   sortOrder: integer("sort_order").notNull().default(0),
   defaultLotQuantity: integer("default_lot_quantity").notNull(),
   defaultOpeningBid: integer("default_opening_bid").notNull(),
+  // Rulebook v2: Bricks, Cement, Steel, Wood, and Glass are sold as
+  // round(activeTeamCount * 2.5) smaller lots per round instead of one
+  // lot per team (every other material stays one lot per team) — see
+  // auction-service.ts's startRound. defaultLotQuantity/defaultOpeningBid
+  // above are already the PER-LOT figures for a split material (e.g.
+  // Bricks: 240 units opening at 240), not a per-team total.
+  splitLots: boolean("split_lots").notNull().default(false),
+  // Rulebook v2: only Bricks, Cement, and Steel carry the "Reserved Kit"
+  // right — before open bidding starts on this material, any team may
+  // claim exactly one lot at its printed opening price with no bidding.
+  // See auction-service.ts's claimReservedKit.
+  reservedKitEligible: boolean("reserved_kit_eligible").notNull().default(false),
   // Set by the "Supply Crunch" Market Shock (applyGlobalEffect's
   // smallest_unsold_lot_price_increase in market-shock-service.ts) on
   // whichever material it identifies as the target — the percent

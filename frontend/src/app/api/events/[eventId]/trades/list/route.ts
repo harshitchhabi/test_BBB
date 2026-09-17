@@ -58,7 +58,10 @@ export async function GET(_req: Request, { params }: { params: Promise<{ eventId
         // null on an open-offer line nobody has claimed yet ("whoever
         // accepts provides this").
         fromTeamName: l.fromTeamId ? (teamNameById.get(l.fromTeamId) ?? null) : null,
-        material: materialById.get(l.materialTypeId),
+        // null materialTypeId means this line trades tokens, not a
+        // material — never a lookup miss to be confused with one.
+        material: l.materialTypeId ? materialById.get(l.materialTypeId) : null,
+        isTokens: l.materialTypeId === null,
       })),
     }));
 

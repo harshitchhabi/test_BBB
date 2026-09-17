@@ -71,6 +71,20 @@
       "when": 1789643898153,
       "tag": "0009_chilly_gravity",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1789681135220,
+      "tag": "0010_unknown_lady_bullseye",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1789681614873,
+      "tag": "0011_green_ken_ellis",
+      "breakpoints": true
     }
   ]
 }

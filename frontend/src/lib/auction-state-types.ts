@@ -8,9 +8,12 @@ export interface AuctionStateResponse {
   activeRound: {
     id: string;
     sequence: number;
+    materialTypeId?: string;
     materialKey?: string;
     materialName?: string;
     shock: { title: string; description: string } | null;
+    reservedKitEligible?: boolean;
+    reservedKitWindowOpen?: boolean;
   } | null;
   liveLot: {
     id: string;

@@ -17,20 +17,32 @@
 // Solar (never appears in any Appendix A recipe; it only ever grants the
 // +10/+15 Eco bonus).
 // ---------------------------------------------------------------------
+// Revision 2 ("balance-audited edition"): Bricks, Cement, Steel, Wood,
+// and Glass used to be seeded as one big lot per team (e.g. Bricks: 600
+// units opening at 600). The audited revision splits each of these five
+// into round(activeTeamCount * 2.5) smaller lots per round instead (for
+// an 8-team baseline: 20 lots), each of the PER-LOT size/opening-bid
+// below — total supply and the per-unit sticker price are unchanged,
+// only the granularity is. splitLots marks these five for that
+// per-round lot-count formula (see auction-service.ts's startRound);
+// every other material stays exactly one lot per team as before.
+// reservedKitEligible marks Bricks/Cement/Steel only, per the new
+// Reserved Kit rule (claim one lot at printed opening price, no
+// bidding, before open bidding starts on that material).
 export const MATERIAL_SEED = [
-  { key: "bricks", name: "Bricks", unitLabel: "units", lotQuantity: 600, openingBid: 600, isRare: false, isBonusOnly: false, sortOrder: 1 },
-  { key: "cement", name: "Cement", unitLabel: "units", lotQuantity: 300, openingBid: 900, isRare: false, isBonusOnly: false, sortOrder: 2 },
-  { key: "steel", name: "Steel", unitLabel: "units", lotQuantity: 100, openingBid: 800, isRare: true, isBonusOnly: false, sortOrder: 3 },
-  { key: "wood", name: "Wood", unitLabel: "units", lotQuantity: 120, openingBid: 240, isRare: false, isBonusOnly: false, sortOrder: 4 },
-  { key: "glass", name: "Glass", unitLabel: "units", lotQuantity: 80, openingBid: 480, isRare: true, isBonusOnly: false, sortOrder: 5 },
-  { key: "pipes", name: "Pipes", unitLabel: "units", lotQuantity: 20, openingBid: 75, isRare: false, isBonusOnly: false, sortOrder: 6 },
-  { key: "wires", name: "Wires", unitLabel: "units", lotQuantity: 20, openingBid: 75, isRare: false, isBonusOnly: false, sortOrder: 7 },
-  { key: "medical", name: "Medical", unitLabel: "units", lotQuantity: 8, openingBid: 125, isRare: true, isBonusOnly: false, sortOrder: 8 },
-  { key: "furniture", name: "Furniture", unitLabel: "units", lotQuantity: 8, openingBid: 50, isRare: false, isBonusOnly: false, sortOrder: 9 },
-  { key: "marble", name: "Marble", unitLabel: "units", lotQuantity: 4, openingBid: 50, isRare: false, isBonusOnly: false, sortOrder: 10 },
-  { key: "tiles", name: "Tiles", unitLabel: "units", lotQuantity: 4, openingBid: 25, isRare: false, isBonusOnly: false, sortOrder: 11 },
-  { key: "solar", name: "Solar", unitLabel: "panels", lotQuantity: 4, openingBid: 50, isRare: false, isBonusOnly: true, sortOrder: 12 },
-  { key: "blueprint", name: "Blueprint", unitLabel: "blueprint", lotQuantity: 1, openingBid: 40, isRare: false, isBonusOnly: true, sortOrder: 13 },
+  { key: "bricks", name: "Bricks", unitLabel: "units", lotQuantity: 240, openingBid: 240, isRare: false, isBonusOnly: false, sortOrder: 1, splitLots: true, reservedKitEligible: true },
+  { key: "cement", name: "Cement", unitLabel: "units", lotQuantity: 120, openingBid: 360, isRare: false, isBonusOnly: false, sortOrder: 2, splitLots: true, reservedKitEligible: true },
+  { key: "steel", name: "Steel", unitLabel: "units", lotQuantity: 40, openingBid: 320, isRare: true, isBonusOnly: false, sortOrder: 3, splitLots: true, reservedKitEligible: true },
+  { key: "wood", name: "Wood", unitLabel: "units", lotQuantity: 48, openingBid: 96, isRare: false, isBonusOnly: false, sortOrder: 4, splitLots: true, reservedKitEligible: false },
+  { key: "glass", name: "Glass", unitLabel: "units", lotQuantity: 32, openingBid: 192, isRare: true, isBonusOnly: false, sortOrder: 5, splitLots: true, reservedKitEligible: false },
+  { key: "pipes", name: "Pipes", unitLabel: "units", lotQuantity: 20, openingBid: 75, isRare: false, isBonusOnly: false, sortOrder: 6, splitLots: false, reservedKitEligible: false },
+  { key: "wires", name: "Wires", unitLabel: "units", lotQuantity: 20, openingBid: 75, isRare: false, isBonusOnly: false, sortOrder: 7, splitLots: false, reservedKitEligible: false },
+  { key: "medical", name: "Medical", unitLabel: "units", lotQuantity: 8, openingBid: 125, isRare: true, isBonusOnly: false, sortOrder: 8, splitLots: false, reservedKitEligible: false },
+  { key: "furniture", name: "Furniture", unitLabel: "units", lotQuantity: 8, openingBid: 50, isRare: false, isBonusOnly: false, sortOrder: 9, splitLots: false, reservedKitEligible: false },
+  { key: "marble", name: "Marble", unitLabel: "units", lotQuantity: 4, openingBid: 50, isRare: false, isBonusOnly: false, sortOrder: 10, splitLots: false, reservedKitEligible: false },
+  { key: "tiles", name: "Tiles", unitLabel: "units", lotQuantity: 4, openingBid: 25, isRare: false, isBonusOnly: false, sortOrder: 11, splitLots: false, reservedKitEligible: false },
+  { key: "solar", name: "Solar", unitLabel: "panels", lotQuantity: 4, openingBid: 50, isRare: false, isBonusOnly: true, sortOrder: 12, splitLots: false, reservedKitEligible: false },
+  { key: "blueprint", name: "Blueprint", unitLabel: "blueprint", lotQuantity: 1, openingBid: 40, isRare: false, isBonusOnly: true, sortOrder: 13, splitLots: false, reservedKitEligible: false },
 ] as const;
 
 // stickerPrice = openingBid / lotQuantity, rounded up per rulebook ("A
@@ -143,7 +155,12 @@ export const RECIPE_SEED = [
   {
     key: "university",
     name: "University",
-    basePoints: 130,
+    // Rulebook v2 balance-audit correction: 130 implied a per-point cost
+    // ~18% below every other building (this recipe costs 1,648.75 tokens
+    // at these materials' sticker prices, i.e. ~110 points at the same
+    // rate every other building follows, not 130). Corrected to 110 so
+    // no building is a hidden bargain.
+    basePoints: 110,
     sortOrder: 7,
     requirements: { bricks: 350, cement: 200, steel: 70, wood: 60, furniture: 1, marble: 1 },
   },

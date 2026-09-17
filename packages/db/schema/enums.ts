@@ -31,6 +31,7 @@ export const materialLotSourceEnum = pgEnum("material_lot_source", [
   "bank",
   "event_grant",
   "manual",
+  "reserved_kit",
 ]);
 
 export const materialLotStatusEnum = pgEnum("material_lot_status", [

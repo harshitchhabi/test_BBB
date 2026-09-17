@@ -62,9 +62,14 @@ export const tradeLines = pgTable("trade_lines", {
   // the proposer's or the known counterparty's id) at proposal time,
   // same as before.
   fromTeamId: uuid("from_team_id").references(() => teams.id),
-  materialTypeId: uuid("material_type_id")
-    .notNull()
-    .references(() => materialTypes.id),
+  // NULL means this line trades TOKENS instead of a material — "credits
+  // for materials and vice versa," per the rulebook's leftover-tokens-
+  // are-spendable-anywhere model. `quantity` below is then the token
+  // amount, not a material count. Exactly one trade side needs to be a
+  // material for a trade to mean anything, but that's a proposeTrade-
+  // time UX concern, not a DB constraint — nothing stops (and nothing
+  // needs to stop) an all-tokens trade at the schema level.
+  materialTypeId: uuid("material_type_id").references(() => materialTypes.id),
   quantity: integer("quantity").notNull(),
 });
 

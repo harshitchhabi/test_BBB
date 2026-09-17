@@ -27,7 +27,12 @@ export interface TradeLineInput {
   // "whoever accepts this offer provides this line." Resolved to the
   // accepting team's id the moment someone accepts (see acceptTrade).
   fromTeamId: string | null;
-  materialTypeId: string;
+  // NULL means this line trades TOKENS instead of a material - leftover
+  // Stage 1 tokens are spendable in Stage 2 the same way a material is,
+  // so a trade can move credits for materials, materials for credits,
+  // or credits for credits, one line at a time. `quantity` is then the
+  // token amount.
+  materialTypeId: string | null;
   quantity: number;
 }
 
@@ -316,8 +321,25 @@ export async function completeTrade(params: { eventId: string; tradeId: string; 
       }
     }
 
+    // Token lines (materialTypeId null) move tokens instead of a
+    // material - tracked as a running per-team delta here so multiple
+    // token lines in one trade (or a token line alongside material
+    // lines) net out correctly before either team's balance is checked
+    // or written, rather than reading/writing auctionTokens once per
+    // line and risking an intermediate line seeing a stale balance.
+    const tokenDeltaByTeam = new Map<string, number>([
+      [proposerTeamId, 0],
+      [counterpartyTeamId, 0],
+    ]);
+
     for (const line of lines) {
       const fromTeamId = line.fromTeamId as string;
+      if (line.materialTypeId === null) {
+        tokenDeltaByTeam.set(fromTeamId, (tokenDeltaByTeam.get(fromTeamId) ?? 0) - line.quantity);
+        const toTeamId = fromTeamId === proposerTeamId ? counterpartyTeamId : proposerTeamId;
+        tokenDeltaByTeam.set(toTeamId, (tokenDeltaByTeam.get(toTeamId) ?? 0) + line.quantity);
+        continue;
+      }
       const available = await getQuantityForMaterial(tx, params.eventId, fromTeamId, line.materialTypeId);
       if (available < line.quantity) {
         const team = teamById.get(fromTeamId)!;
@@ -325,7 +347,15 @@ export async function completeTrade(params: { eventId: string; tradeId: string; 
       }
     }
 
+    for (const teamId of [proposerTeamId, counterpartyTeamId]) {
+      const delta = tokenDeltaByTeam.get(teamId) ?? 0;
+      if (delta < 0 && teamById.get(teamId)!.auctionTokens + delta < 0) {
+        throw new GameError("conflict", `${teamById.get(teamId)!.name} does not have enough tokens to complete this trade.`);
+      }
+    }
+
     for (const line of lines) {
+      if (line.materialTypeId === null) continue; // handled via tokenDeltaByTeam below
       const fromTeamId = line.fromTeamId as string;
       const toTeamId = fromTeamId === proposerTeamId ? counterpartyTeamId : proposerTeamId;
       await tx.insert(teamInventoryTransactions).values([
@@ -354,7 +384,8 @@ export async function completeTrade(params: { eventId: string; tradeId: string; 
 
     for (const teamId of [proposerTeamId, counterpartyTeamId]) {
       const team = teamById.get(teamId)!;
-      await tx.update(teams).set({ tradeCount: team.tradeCount + 1 }).where(eq(teams.id, teamId));
+      const tokenDelta = tokenDeltaByTeam.get(teamId) ?? 0;
+      await tx.update(teams).set({ tradeCount: team.tradeCount + 1, auctionTokens: team.auctionTokens + tokenDelta }).where(eq(teams.id, teamId));
     }
 
     const [updated] = await tx

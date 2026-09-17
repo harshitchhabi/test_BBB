@@ -26,6 +26,14 @@ export default function ModeratorAuctionPage({ params }: { params: Promise<{ eve
   const [lotQuantity, setLotQuantity] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Rulebook v2: a moderator can now pause one material's round (its
+  // remaining lots stay pending) to run another, then come back to it
+  // later — see auction-service.ts's listActiveRounds. This is every
+  // round that's still "active," not just whichever one currently has
+  // the live lot (that's still state.activeRound/state.liveLot below).
+  const [activeRounds, setActiveRounds] = useState<
+    Array<{ id: string; sequence: number; materialKey: string; materialName: string; pendingLots: number; liveLots: number }>
+  >([]);
   const [confirmState, setConfirmState] = useState<ConfirmDialogState | null>(null);
   const [now, setNow] = useState(() => Date.now());
 
@@ -40,14 +48,19 @@ export default function ModeratorAuctionPage({ params }: { params: Promise<{ eve
   }, [state?.liveLot?.id, state?.liveLot?.closesAt]);
 
   const refresh = useCallback(async () => {
-    const res = await fetch(`/api/events/${eventId}/auction-state`);
-    const body = await res.json().catch(() => null);
-    if (res.ok) {
+    const [stateRes, roundsRes] = await Promise.all([
+      fetch(`/api/events/${eventId}/auction-state`),
+      fetch(`/api/events/${eventId}/auction-rounds`),
+    ]);
+    const body = await stateRes.json().catch(() => null);
+    if (stateRes.ok) {
       setState(body);
       setLoadError(null);
     } else {
-      setLoadError(body?.message ?? `Couldn't load the auction (${res.status}).`);
+      setLoadError(body?.message ?? `Couldn't load the auction (${stateRes.status}).`);
     }
+    const roundsBody = await roundsRes.json().catch(() => null);
+    if (roundsRes.ok) setActiveRounds(roundsBody.rounds ?? []);
   }, [eventId]);
 
   useEffect(() => {
@@ -182,53 +195,78 @@ export default function ModeratorAuctionPage({ params }: { params: Promise<{ eve
         {materials.length === 0 && <p className="text-yellow-300 text-sm mt-2">No materials found - has the event been seeded?</p>}
       </Panel>
 
-      {state.activeRound && (
+      {state.liveLot && state.activeRound && (
         <Panel className="w-full max-w-2xl mb-4">
           <PanelTitle>
-            ROUND {state.activeRound.sequence}: {state.activeRound.materialName ?? state.activeRound.materialKey}
+            LIVE: ROUND {state.activeRound.sequence} - {state.activeRound.materialName ?? state.activeRound.materialKey}
           </PanelTitle>
           {state.activeRound.shock && (
             <p className="text-yellow-300 mb-2">{state.activeRound.shock.title} - {state.activeRound.shock.description}</p>
           )}
-          <p className="text-white mb-3">{state.pendingLotsCount} lot(s) still pending in this round.</p>
-
-          {state.liveLot ? (
-            <div className="bg-[#764A21]/40 rounded-lg p-3">
-              <p className="text-white">
-                Live: lot #{state.liveLot.lotNumber} - opening {state.liveLot.openingBid}, next min {state.liveLot.nextMinimumBid}
-                {state.liveLot.quantity != null && ` - ${state.liveLot.quantity} units`}
-              </p>
-              <p className="text-white/70 text-sm mb-2">
-                Current highest: {state.liveLot.currentHighestBid
-                  ? `${state.liveLot.currentHighestBid.amount} (${state.teams.find((t) => t.id === state.liveLot!.currentHighestBid!.teamId)?.name ?? "unknown team"})`
-                  : "none"}
-              </p>
-              {state.liveLot.closesAt && (() => {
-                const secondsLeft = Math.max(0, Math.round((new Date(state.liveLot!.closesAt!).getTime() - now) / 1000));
-                const urgent = secondsLeft <= 10;
-                return (
-                  <p className={`text-sm font-bold mb-2 ${urgent ? "text-red-400" : "text-yellow-300"}`}>
-                    Time remaining: {Math.floor(secondsLeft / 60)}:{(secondsLeft % 60).toString().padStart(2, "0")}
-                    {secondsLeft === 0 && " - timer's up, waiting to close"}
-                  </p>
-                );
-              })()}
-              <div className="flex gap-2 flex-wrap">
-                <WoodButton variant="danger" disabled={busy} onClick={() => call(`/api/events/${eventId}/auction-lots/${state.liveLot!.id}/close`, { reason: "Moderator closed the lot." })}>
-                  Close lot
+          <div className="bg-[#764A21]/40 rounded-lg p-3">
+            <p className="text-white">
+              Live: lot #{state.liveLot.lotNumber} - opening {state.liveLot.openingBid}, next min {state.liveLot.nextMinimumBid}
+              {state.liveLot.quantity != null && ` - ${state.liveLot.quantity} units`}
+            </p>
+            <p className="text-white/70 text-sm mb-2">
+              Current highest: {state.liveLot.currentHighestBid
+                ? `${state.liveLot.currentHighestBid.amount} (${state.teams.find((t) => t.id === state.liveLot!.currentHighestBid!.teamId)?.name ?? "unknown team"})`
+                : "none"}
+            </p>
+            {state.liveLot.closesAt && (() => {
+              const secondsLeft = Math.max(0, Math.round((new Date(state.liveLot!.closesAt!).getTime() - now) / 1000));
+              const urgent = secondsLeft <= 10;
+              return (
+                <p className={`text-sm font-bold mb-2 ${urgent ? "text-red-400" : "text-yellow-300"}`}>
+                  Time remaining: {Math.floor(secondsLeft / 60)}:{(secondsLeft % 60).toString().padStart(2, "0")}
+                  {secondsLeft === 0 && " - timer's up, waiting to close"}
+                </p>
+              );
+            })()}
+            <div className="flex gap-2 flex-wrap">
+              <WoodButton variant="danger" disabled={busy} onClick={() => call(`/api/events/${eventId}/auction-lots/${state.liveLot!.id}/close`, { reason: "Moderator closed the lot." })}>
+                Close lot
+              </WoodButton>
+              {state.liveLot.currentHighestBid && (
+                <WoodButton disabled={busy} onClick={() => voidCurrentHighestBid(state.liveLot!.currentHighestBid!.id, state.liveLot!.lotNumber)}>
+                  Void current highest bid
                 </WoodButton>
-                {state.liveLot.currentHighestBid && (
-                  <WoodButton disabled={busy} onClick={() => voidCurrentHighestBid(state.liveLot!.currentHighestBid!.id, state.liveLot!.lotNumber)}>
-                    Void current highest bid
-                  </WoodButton>
-                )}
-              </div>
+              )}
             </div>
-          ) : (
-            <WoodButton variant="primary" disabled={busy} onClick={() => call(`/api/events/${eventId}/auction-rounds/${state.activeRound!.id}/open-next-lot`)}>
-              Open next lot
-            </WoodButton>
-          )}
+          </div>
+        </Panel>
+      )}
+
+      {activeRounds.length > 0 && (
+        <Panel className="w-full max-w-2xl mb-4">
+          <PanelTitle>ACTIVE ROUNDS</PanelTitle>
+          <p className="text-white/70 text-sm mb-2">
+            Every material round still open, whether or not it's the one currently live — pause one to run another,
+            then come back and resume it later. Only one lot can be live anywhere at a time.
+          </p>
+          <div className="space-y-2">
+            {activeRounds.map((r) => {
+              const isCurrentlyLive = state.liveLot != null && state.activeRound?.id === r.id;
+              return (
+                <div key={r.id} className="bg-[#764A21]/40 rounded-lg p-3 flex justify-between items-center text-white text-sm flex-wrap gap-2">
+                  <span>
+                    Round {r.sequence}: <strong>{r.materialName}</strong> - {r.pendingLots} pending
+                    {isCurrentlyLive ? " (live now)" : ""}
+                  </span>
+                  {!isCurrentlyLive && (
+                    <WoodButton
+                      variant="primary"
+                      disabled={busy || state.liveLot != null || r.pendingLots === 0}
+                      onClick={() => call(`/api/events/${eventId}/auction-rounds/${r.id}/open-next-lot`)}
+                    >
+                      {r.pendingLots === 0 ? "No lots left" : "Open next lot"}
+                    </WoodButton>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          {state.liveLot && <p className="text-yellow-300 text-xs mt-2">Close the current live lot above before opening another round's lot.</p>}
         </Panel>
       )}
 

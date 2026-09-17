@@ -12,6 +12,11 @@ import { requireParticipant, apiErrorResponse, isValidAmount } from "@/lib/api";
 // fromTeamId may then also be null, meaning "whoever accepts provides
 // this" - proposeTrade validates that only the proposer's own id or
 // null appears on an open offer's lines.
+//
+// A line's materialTypeId may also be null/omitted, meaning this line
+// trades TOKENS instead of a material - "credits for materials and
+// vice versa," per the rulebook's leftover-tokens-are-spendable-
+// anywhere model. quantity is then the token amount.
 export async function POST(req: Request, { params }: { params: Promise<{ eventId: string }> }) {
   try {
     const { eventId } = await params;
@@ -26,7 +31,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ eventId
         (line) =>
           line &&
           (typeof line.fromTeamId === "string" || (isOpenOffer && line.fromTeamId == null)) &&
-          typeof line.materialTypeId === "string" &&
+          (typeof line.materialTypeId === "string" || line.materialTypeId == null) &&
           isValidAmount(line.quantity),
       );
     if (typeof proposerTeamId !== "string" || (!isOpenOffer && typeof counterpartyTeamId !== "string") || !linesValid) {
@@ -45,7 +50,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ eventId
       proposerTeamId,
       counterpartyTeamId: isOpenOffer ? null : counterpartyTeamId,
       proposerParticipantId: participant.id,
-      lines,
+      lines: lines.map((l: { fromTeamId: string | null; materialTypeId?: string | null; quantity: number }) => ({
+        fromTeamId: l.fromTeamId,
+        materialTypeId: l.materialTypeId ?? null,
+        quantity: l.quantity,
+      })),
     });
     return NextResponse.json(trade);
   } catch (err) {

@@ -72,21 +72,22 @@ export async function setEventStatus(params: {
 
     // A live lot mid-bid has nowhere to go once the event leaves
     // stage_1: placeBid/closeLot both require stage_1, so an orphaned
-    // "live" lot could never close through the normal flow again, and
-    // event.activeRoundId would dangle indefinitely (only forceEventStage
-    // cleans that up). A "pending" (never opened) lot is fine to leave
-    // behind — a moderator may deliberately choose to stop auctioning a
-    // material early — but a lot actually accepting bids right now must
-    // be closed first. This only guards the normal path; forceEventStage
+    // "live" lot could never close through the normal flow again. A
+    // "pending" (never opened) lot is fine to leave behind — a moderator
+    // may deliberately choose to stop auctioning a material early, or
+    // leave a paused round unfinished (multiple rounds can now sit
+    // "active" at once — see auction-service.ts's listActiveRounds) —
+    // but a lot actually accepting bids right now must be closed first.
+    // Checked event-wide (not just via event.activeRoundId) since that's
+    // the real constraint: only one lot is ever live anywhere in the
+    // event at a time. This only guards the normal path; forceEventStage
     // exists precisely for the "just get me out of here" override case.
-    if (event.activeRoundId) {
-      const [liveLot] = await tx
-        .select({ id: auctionLots.id })
-        .from(auctionLots)
-        .where(and(eq(auctionLots.roundId, event.activeRoundId), eq(auctionLots.status, "live")));
-      if (liveLot) {
-        throw new GameError("conflict", "Close the currently live auction lot before advancing the event's stage.");
-      }
+    const [liveLot] = await tx
+      .select({ id: auctionLots.id })
+      .from(auctionLots)
+      .where(and(eq(auctionLots.eventId, params.eventId), eq(auctionLots.status, "live")));
+    if (liveLot) {
+      throw new GameError("conflict", "Close the currently live auction lot before advancing the event's stage.");
     }
 
     const updates: Partial<typeof events.$inferInsert> = { status: params.status as (typeof events.$inferSelect)["status"] };

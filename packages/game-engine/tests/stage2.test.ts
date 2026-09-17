@@ -348,6 +348,79 @@ describe("Trading", () => {
   });
 });
 
+describe("Tokens-for-materials trading", () => {
+  it("moves tokens the same way a material line moves inventory, one line at a time or mixed with material lines", async () => {
+    const { event, materials, moderator, teamA, teamB } = await createStage2Fixture(dbModule.db);
+    await grantInventory(dbModule.db, event.id, teamB.team.id, materials.bricks.id, 50);
+    const [teamABefore] = await dbModule.db.select().from(schema.teams).where(dbModule.eq(schema.teams.id, teamA.team.id));
+    const [teamBBefore] = await dbModule.db.select().from(schema.teams).where(dbModule.eq(schema.teams.id, teamB.team.id));
+
+    // A null materialTypeId line trades tokens instead of a material -
+    // teamA pays 100 tokens for 50 bricks from teamB, one line each.
+    const trade = await engine.proposeTrade({
+      eventId: event.id,
+      proposerTeamId: teamA.team.id,
+      counterpartyTeamId: teamB.team.id,
+      proposerParticipantId: teamA.leader.id,
+      lines: [
+        { fromTeamId: teamA.team.id, materialTypeId: null, quantity: 100 },
+        { fromTeamId: teamB.team.id, materialTypeId: materials.bricks.id, quantity: 50 },
+      ],
+    });
+    await engine.acceptTrade({ eventId: event.id, tradeId: trade.id, acceptingParticipantId: teamB.leader.id });
+    await engine.registerTrade({ eventId: event.id, tradeId: trade.id, moderatorParticipantId: moderator.id });
+    await engine.completeTrade({ eventId: event.id, tradeId: trade.id, moderatorParticipantId: moderator.id });
+
+    const [teamAAfter] = await dbModule.db.select().from(schema.teams).where(dbModule.eq(schema.teams.id, teamA.team.id));
+    const [teamBAfter] = await dbModule.db.select().from(schema.teams).where(dbModule.eq(schema.teams.id, teamB.team.id));
+    expect(teamAAfter.auctionTokens).toBe(teamABefore.auctionTokens - 100);
+    expect(teamBAfter.auctionTokens).toBe(teamBBefore.auctionTokens + 100);
+
+    const teamAInventory = await engine.getTeamInventory(event.id, teamA.team.id);
+    expect(teamAInventory.find((i: any) => i.materialTypeId === materials.bricks.id)?.quantity).toBe(50);
+  });
+
+  it("refuses to complete a trade that would take a team's tokens negative", async () => {
+    const { event, moderator, teamA, teamB } = await createStage2Fixture(dbModule.db);
+
+    const trade = await engine.proposeTrade({
+      eventId: event.id,
+      proposerTeamId: teamA.team.id,
+      counterpartyTeamId: teamB.team.id,
+      proposerParticipantId: teamA.leader.id,
+      lines: [{ fromTeamId: teamA.team.id, materialTypeId: null, quantity: 100000 }],
+    });
+    await engine.acceptTrade({ eventId: event.id, tradeId: trade.id, acceptingParticipantId: teamB.leader.id });
+    await engine.registerTrade({ eventId: event.id, tradeId: trade.id, moderatorParticipantId: moderator.id });
+    await expect(
+      engine.completeTrade({ eventId: event.id, tradeId: trade.id, moderatorParticipantId: moderator.id }),
+    ).rejects.toMatchObject({ code: "conflict" });
+  });
+
+  it("supports a token line on an open offer, resolved to the accepting team on claim", async () => {
+    const { event, materials, moderator, teamA, teamB } = await createStage2Fixture(dbModule.db);
+    await grantInventory(dbModule.db, event.id, teamA.team.id, materials.bricks.id, 20);
+    const [teamBBefore] = await dbModule.db.select().from(schema.teams).where(dbModule.eq(schema.teams.id, teamB.team.id));
+
+    const offer = await engine.proposeTrade({
+      eventId: event.id,
+      proposerTeamId: teamA.team.id,
+      counterpartyTeamId: null,
+      proposerParticipantId: teamA.leader.id,
+      lines: [
+        { fromTeamId: teamA.team.id, materialTypeId: materials.bricks.id, quantity: 20 },
+        { fromTeamId: null, materialTypeId: null, quantity: 75 }, // whoever accepts pays 75 tokens
+      ],
+    });
+    await engine.acceptTrade({ eventId: event.id, tradeId: offer.id, acceptingParticipantId: teamB.leader.id, acceptingTeamId: teamB.team.id });
+    await engine.registerTrade({ eventId: event.id, tradeId: offer.id, moderatorParticipantId: moderator.id });
+    await engine.completeTrade({ eventId: event.id, tradeId: offer.id, moderatorParticipantId: moderator.id });
+
+    const [teamBAfter] = await dbModule.db.select().from(schema.teams).where(dbModule.eq(schema.teams.id, teamB.team.id));
+    expect(teamBAfter.auctionTokens).toBe(teamBBefore.auctionTokens - 75);
+  });
+});
+
 describe("Bank purchases", () => {
   it("charges the rare-material tax rate and depletes finite bank stock", async () => {
     const { event, materials, teamA } = await createStage2Fixture(dbModule.db);
