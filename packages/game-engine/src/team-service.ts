@@ -170,7 +170,7 @@ export async function createTeamLogin(params: {
   username: string;
   password?: string;
 }) {
-  return runInTransaction(async (tx) => {
+  return runInTransaction(async (tx, queueBroadcast) => {
     await assertStaffTx(tx, params.eventId, params.actorParticipantId);
     const { participant, password } = await createLoginTx(tx, { name: params.teamName, username: params.username, password: params.password });
     const team = await createTeamTx(tx, { eventId: params.eventId, ownerParticipantId: participant.id, name: params.teamName });
@@ -182,6 +182,11 @@ export async function createTeamLogin(params: {
       entityId: team.id,
       afterJson: { teamName: params.teamName, username: participant.username },
     });
+    // A second moderator watching Teams & Incidents live (a real scenario
+    // now that multiple staff logins are common) never saw a newly
+    // created team appear without a manual reload - this route never
+    // broadcast anything.
+    queueBroadcast({ eventId: params.eventId, type: "moderator.announcement", data: { createdTeamId: team.id, createdTeamName: team.name } });
     return { team, username: participant.username, password };
   });
 }
@@ -277,7 +282,7 @@ export async function createStaffLogin(params: {
   username: string;
   password?: string;
 }) {
-  return runInTransaction(async (tx) => {
+  return runInTransaction(async (tx, queueBroadcast) => {
     const [event] = await tx.select().from(events).where(eq(events.id, params.eventId));
     if (!event) throw new GameError("not_found", "Event not found.");
 
@@ -308,6 +313,10 @@ export async function createStaffLogin(params: {
       afterJson: { name: params.name, username: participant.username },
     });
 
+    // Same reasoning as createTeamLogin: another moderator watching the
+    // Setup page's Current Staff list never saw a new staff login appear
+    // without a manual reload.
+    queueBroadcast({ eventId: params.eventId, type: "moderator.announcement", data: { createdStaffParticipantId: participant.id, createdStaffName: params.name } });
     return { staffRow, username: participant.username, password };
   });
 }

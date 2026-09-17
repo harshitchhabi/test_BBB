@@ -57,6 +57,13 @@
       "when": 1789629801464,
       "tag": "0007_handy_cardiac",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1789633378104,
+      "tag": "0008_pink_purple_man",
+      "breakpoints": true
     }
   ]
 }

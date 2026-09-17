@@ -96,8 +96,9 @@ export async function createStage2Fixture(db: typeof DbType) {
 
   const teamA = await createTeamWithLeader("TeamA", 1000);
   const teamB = await createTeamWithLeader("TeamB", 1000);
+  const teamC = await createTeamWithLeader("TeamC", 1000);
 
-  return { event, moderator, materials, recipes: { park, mall }, teamA, teamB };
+  return { event, moderator, materials, recipes: { park, mall }, teamA, teamB, teamC };
 }
 
 export async function grantInventory(db: typeof DbType, eventId: string, teamId: string, materialTypeId: string, quantity: number) {

@@ -34,9 +34,11 @@ export const trades = pgTable("trades", {
   proposerTeamId: uuid("proposer_team_id")
     .notNull()
     .references(() => teams.id),
-  counterpartyTeamId: uuid("counterparty_team_id")
-    .notNull()
-    .references(() => teams.id),
+  // NULL means "an open offer" - not directed at any specific team, any
+  // other team's leader may accept it, at which point this column is
+  // filled in with whichever team did (first to accept wins). A normal
+  // two-party trade sets this at proposal time, same as before.
+  counterpartyTeamId: uuid("counterparty_team_id").references(() => teams.id),
   status: tradeStatusEnum("status").notNull().default("draft"),
   // true = registered "pink slip" (binding, moderator-enforced); false =
   // handshake (not enforced by the system beyond bookkeeping). Rulebook
@@ -54,9 +56,12 @@ export const tradeLines = pgTable("trade_lines", {
   tradeId: uuid("trade_id")
     .notNull()
     .references(() => trades.id, { onDelete: "cascade" }),
-  fromTeamId: uuid("from_team_id")
-    .notNull()
-    .references(() => teams.id),
+  // NULL means "whoever accepts this open offer provides this line" -
+  // filled in with the accepting team's id the moment someone accepts.
+  // A normal two-party trade's lines are always fully specified (either
+  // the proposer's or the known counterparty's id) at proposal time,
+  // same as before.
+  fromTeamId: uuid("from_team_id").references(() => teams.id),
   materialTypeId: uuid("material_type_id")
     .notNull()
     .references(() => materialTypes.id),

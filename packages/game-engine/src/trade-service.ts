@@ -23,7 +23,10 @@ import { assertTeamLeaderTx, assertStaffTx, isTeamLeaderTx } from "./team-servic
 // flight at once.
 
 export interface TradeLineInput {
-  fromTeamId: string;
+  // NULL only ever valid on an open offer (no counterparty yet) - means
+  // "whoever accepts this offer provides this line." Resolved to the
+  // accepting team's id the moment someone accepts (see acceptTrade).
+  fromTeamId: string | null;
   materialTypeId: string;
   quantity: number;
 }
@@ -36,11 +39,26 @@ async function assertStage2(tx: Tx, eventId: string) {
   }
 }
 
-function assertLinesBelongToTrade(lines: TradeLineInput[], proposerTeamId: string, counterpartyTeamId: string) {
+// counterpartyTeamId is null for an open offer (not yet accepted by
+// anyone) - every line must then be either the proposer's own id (what
+// they're giving) or null (what they want back, to be filled in with
+// whoever accepts). Once a counterparty is known (a normal two-party
+// trade proposed directly, or an open offer after acceptTrade fills the
+// null lines in), every line must be fully specified as one of the two
+// real teams - no line is ever allowed to reference some THIRD team.
+function assertLinesBelongToTrade(lines: TradeLineInput[], proposerTeamId: string, counterpartyTeamId: string | null) {
   if (lines.length === 0) throw new GameError("conflict", "A trade needs at least one line.");
   for (const line of lines) {
-    if (line.fromTeamId !== proposerTeamId && line.fromTeamId !== counterpartyTeamId) {
-      throw new GameError("conflict", "Every trade line must come from one of the two teams in the trade.");
+    const valid = counterpartyTeamId
+      ? line.fromTeamId === proposerTeamId || line.fromTeamId === counterpartyTeamId
+      : line.fromTeamId === proposerTeamId || line.fromTeamId === null;
+    if (!valid) {
+      throw new GameError(
+        "conflict",
+        counterpartyTeamId
+          ? "Every trade line must come from one of the two teams in the trade."
+          : "On an open offer, every line must either be from the proposing team, or left unassigned for whoever accepts to provide.",
+      );
     }
     if (line.quantity <= 0) throw new GameError("conflict", "Trade line quantities must be positive.");
   }
@@ -49,17 +67,21 @@ function assertLinesBelongToTrade(lines: TradeLineInput[], proposerTeamId: strin
 export async function proposeTrade(params: {
   eventId: string;
   proposerTeamId: string;
-  counterpartyTeamId: string;
+  // Omit/null to post an OPEN OFFER instead of a direct two-party
+  // proposal - not aimed at any specific team, sitting out there for any
+  // other team's leader to accept (first to accept wins).
+  counterpartyTeamId?: string | null;
   proposerParticipantId: string;
   lines: TradeLineInput[];
 }) {
-  return runInTransaction(async (tx) => {
+  return runInTransaction(async (tx, queueBroadcast) => {
     await assertStage2(tx, params.eventId);
     await assertTeamLeaderTx(tx, params.eventId, params.proposerTeamId, params.proposerParticipantId);
-    if (params.proposerTeamId === params.counterpartyTeamId) {
+    const counterpartyTeamId = params.counterpartyTeamId ?? null;
+    if (counterpartyTeamId === params.proposerTeamId) {
       throw new GameError("conflict", "A team cannot trade with itself.");
     }
-    assertLinesBelongToTrade(params.lines, params.proposerTeamId, params.counterpartyTeamId);
+    assertLinesBelongToTrade(params.lines, params.proposerTeamId, counterpartyTeamId);
 
     const [nextNumber] = await tx
       .select({ n: sql<number>`coalesce(max(${trades.tradeNumber}), 0)` })
@@ -71,7 +93,7 @@ export async function proposeTrade(params: {
       .values({
         eventId: params.eventId,
         proposerTeamId: params.proposerTeamId,
-        counterpartyTeamId: params.counterpartyTeamId,
+        counterpartyTeamId,
         status: "submitted",
         binding: false,
         tradeNumber: (nextNumber?.n ?? 0) + 1,
@@ -96,6 +118,15 @@ export async function proposeTrade(params: {
       afterJson: { trade, lines: params.lines },
     });
 
+    // A real, live gap: every OTHER trade transition (accept, decline,
+    // register, complete, cancel, reject) broadcasts trade.changed, but
+    // proposeTrade - the very first step, creating the trade at all -
+    // never did. The moderator's Trade Desk and every other team's
+    // screen only ever refresh on a broadcast (or their own next
+    // unrelated action), so a brand new proposal was invisible to
+    // everyone but the two teams involved until somebody happened to
+    // reload the page.
+    queueBroadcast({ eventId: params.eventId, type: "trade.changed", data: trade });
     return trade;
   });
 }
@@ -109,13 +140,36 @@ async function loadTradeForUpdate(tx: Tx, eventId: string, tradeId: string) {
 // The counterparty's leader agreeing to the exact terms proposed. Only
 // they can do this — not the proposer, not staff — since this is the
 // step that stands in for the other team's real-world consent.
-export async function acceptTrade(params: { eventId: string; tradeId: string; acceptingParticipantId: string }) {
+//
+// For an OPEN OFFER (trade.counterpartyTeamId still null), there is no
+// fixed "the counterparty" yet - acceptingTeamId says which team is
+// claiming it, first-come-first-served. The row lock on `trade` above
+// (loadTradeForUpdate) is what makes "first" well-defined: two teams
+// accepting the same open offer at the same instant serialize on that
+// lock, and the loser's status check below reads the WINNER's already-
+// committed "accepted" status and cleanly rejects instead of double-
+// accepting the same offer.
+export async function acceptTrade(params: { eventId: string; tradeId: string; acceptingParticipantId: string; acceptingTeamId?: string }) {
   return runInTransaction(async (tx, queueBroadcast) => {
     const trade = await loadTradeForUpdate(tx, params.eventId, params.tradeId);
     if (trade.status !== "submitted") throw new GameError("conflict", "This trade is no longer waiting for a response.");
-    await assertTeamLeaderTx(tx, params.eventId, trade.counterpartyTeamId, params.acceptingParticipantId);
 
-    const [updated] = await tx.update(trades).set({ status: "accepted" }).where(eq(trades.id, trade.id)).returning();
+    let counterpartyTeamId = trade.counterpartyTeamId;
+    if (counterpartyTeamId) {
+      await assertTeamLeaderTx(tx, params.eventId, counterpartyTeamId, params.acceptingParticipantId);
+    } else {
+      if (!params.acceptingTeamId) throw new GameError("invalid_input", "acceptingTeamId is required to accept an open offer.");
+      if (params.acceptingTeamId === trade.proposerTeamId) throw new GameError("conflict", "You cannot accept your own open offer.");
+      await assertTeamLeaderTx(tx, params.eventId, params.acceptingTeamId, params.acceptingParticipantId);
+      counterpartyTeamId = params.acceptingTeamId;
+      // Fill in every line that was left unassigned ("whoever accepts
+      // provides this") with the team that just claimed the offer -
+      // from here on this is a fully-specified two-party trade like any
+      // other, same as if it had been proposed directly to this team.
+      await tx.update(tradeLines).set({ fromTeamId: counterpartyTeamId }).where(sql`${tradeLines.tradeId} = ${trade.id} and ${tradeLines.fromTeamId} is null`);
+    }
+
+    const [updated] = await tx.update(trades).set({ status: "accepted", counterpartyTeamId }).where(eq(trades.id, trade.id)).returning();
 
     await recordAudit(tx, {
       eventId: params.eventId,
@@ -141,7 +195,11 @@ export async function declineTrade(params: { eventId: string; tradeId: string; d
     if (trade.status !== "submitted") throw new GameError("conflict", "This trade is no longer waiting for a response.");
 
     const isProposer = await isTeamLeaderTx(tx, params.eventId, trade.proposerTeamId, params.decliningParticipantId);
-    const isCounterparty = await isTeamLeaderTx(tx, params.eventId, trade.counterpartyTeamId, params.decliningParticipantId);
+    // An open offer (counterpartyTeamId still null) has no counterparty
+    // to decline yet - only the proposer can withdraw it.
+    const isCounterparty = trade.counterpartyTeamId
+      ? await isTeamLeaderTx(tx, params.eventId, trade.counterpartyTeamId, params.decliningParticipantId)
+      : false;
     if (!isProposer && !isCounterparty) {
       throw new GameError("forbidden", "Only one of the two teams in this trade can decline it.");
     }
@@ -232,12 +290,18 @@ export async function completeTrade(params: { eventId: string; tradeId: string; 
     // Lock both teams, in a stable order (by id) regardless of which is
     // proposer/counterparty, so completing two different trades that
     // happen to share a team never deadlocks on lock-acquisition order.
-    const teamIds = [trade.proposerTeamId, trade.counterpartyTeamId].sort();
+    // By "registered" (this function only runs on a registered trade),
+    // acceptTrade has already resolved counterpartyTeamId and every
+    // line's fromTeamId from an open offer's initial nulls - neither can
+    // still be null here.
+    const proposerTeamId = trade.proposerTeamId as string;
+    const counterpartyTeamId = trade.counterpartyTeamId as string;
+    const teamIds = [proposerTeamId, counterpartyTeamId].sort();
     const [teamA] = await tx.select().from(teams).where(eq(teams.id, teamIds[0])).for("update");
     const [teamB] = await tx.select().from(teams).where(eq(teams.id, teamIds[1])).for("update");
     const teamById = new Map([teamA, teamB].map((t) => [t.id, t]));
 
-    for (const teamId of [trade.proposerTeamId, trade.counterpartyTeamId]) {
+    for (const teamId of [proposerTeamId, counterpartyTeamId]) {
       const team = teamById.get(teamId);
       if (!team || team.status !== "active") throw new GameError("forbidden", "Both teams must be active to trade.");
     }
@@ -245,7 +309,7 @@ export async function completeTrade(params: { eventId: string; tradeId: string; 
     const [settings] = await tx.select().from(eventSettings).where(eq(eventSettings.eventId, params.eventId));
     if (!settings) throw new GameError("not_found", "Event settings not found.");
 
-    for (const teamId of [trade.proposerTeamId, trade.counterpartyTeamId]) {
+    for (const teamId of [proposerTeamId, counterpartyTeamId]) {
       const team = teamById.get(teamId)!;
       if (team.tradeCount >= settings.tradeLimit) {
         throw new GameError("trade_limit_reached", `${team.name} has already used its ${settings.tradeLimit} trades.`);
@@ -253,19 +317,21 @@ export async function completeTrade(params: { eventId: string; tradeId: string; 
     }
 
     for (const line of lines) {
-      const available = await getQuantityForMaterial(tx, params.eventId, line.fromTeamId, line.materialTypeId);
+      const fromTeamId = line.fromTeamId as string;
+      const available = await getQuantityForMaterial(tx, params.eventId, fromTeamId, line.materialTypeId);
       if (available < line.quantity) {
-        const team = teamById.get(line.fromTeamId)!;
+        const team = teamById.get(fromTeamId)!;
         throw new GameError("conflict", `${team.name} does not have enough of that material to complete this trade.`);
       }
     }
 
     for (const line of lines) {
-      const toTeamId = line.fromTeamId === trade.proposerTeamId ? trade.counterpartyTeamId : trade.proposerTeamId;
+      const fromTeamId = line.fromTeamId as string;
+      const toTeamId = fromTeamId === proposerTeamId ? counterpartyTeamId : proposerTeamId;
       await tx.insert(teamInventoryTransactions).values([
         {
           eventId: params.eventId,
-          teamId: line.fromTeamId,
+          teamId: fromTeamId,
           materialTypeId: line.materialTypeId,
           quantityDelta: -line.quantity,
           reason: "trade_out",
@@ -286,7 +352,7 @@ export async function completeTrade(params: { eventId: string; tradeId: string; 
       ]);
     }
 
-    for (const teamId of [trade.proposerTeamId, trade.counterpartyTeamId]) {
+    for (const teamId of [proposerTeamId, counterpartyTeamId]) {
       const team = teamById.get(teamId)!;
       await tx.update(teams).set({ tradeCount: team.tradeCount + 1 }).where(eq(teams.id, teamId));
     }

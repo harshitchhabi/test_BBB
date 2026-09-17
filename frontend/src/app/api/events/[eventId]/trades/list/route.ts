@@ -51,10 +51,13 @@ export async function GET(_req: Request, { params }: { params: Promise<{ eventId
     const result = eventTrades.map((trade) => ({
       ...trade,
       proposerTeamName: teamNameById.get(trade.proposerTeamId),
-      counterpartyTeamName: teamNameById.get(trade.counterpartyTeamId),
+      // null on an open offer nobody has accepted yet.
+      counterpartyTeamName: trade.counterpartyTeamId ? (teamNameById.get(trade.counterpartyTeamId) ?? null) : null,
       lines: (linesByTradeId.get(trade.id) ?? []).map((l) => ({
         ...l,
-        fromTeamName: teamNameById.get(l.fromTeamId),
+        // null on an open-offer line nobody has claimed yet ("whoever
+        // accepts provides this").
+        fromTeamName: l.fromTeamId ? (teamNameById.get(l.fromTeamId) ?? null) : null,
         material: materialById.get(l.materialTypeId),
       })),
     }));

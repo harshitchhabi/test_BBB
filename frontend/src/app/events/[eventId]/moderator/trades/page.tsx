@@ -70,16 +70,18 @@ export default function ModeratorTradesPage({ params }: { params: Promise<{ even
           {trades.map((t) => (
             <div key={t.id} className="bg-[#764A21]/40 rounded-lg p-3 text-white">
               <div className="flex justify-between font-bold">
-                <span>#{t.tradeNumber}: {t.proposerTeamName} ↔ {t.counterpartyTeamName}</span>
+                <span>#{t.tradeNumber}: {t.proposerTeamName} ↔ {t.counterpartyTeamName ?? "open to anyone"}</span>
                 <span className="capitalize">{t.status}{t.binding ? " (pink slip)" : ""}</span>
               </div>
               <div className="text-sm text-white/80 mt-1">
                 {t.lines.map((l: any, i: number) => (
-                  <div key={i}>{l.fromTeamName} gives {l.quantity} {l.material?.name}</div>
+                  <div key={i}>{l.fromTeamName ?? "Whoever accepts"} gives {l.quantity} {l.material?.name}</div>
                 ))}
               </div>
               {t.status === "submitted" && (
-                <p className="text-yellow-300 text-sm mt-1">Waiting for {t.counterpartyTeamName} to accept - nothing for you to do yet.</p>
+                <p className="text-yellow-300 text-sm mt-1">
+                  {t.counterpartyTeamName ? `Waiting for ${t.counterpartyTeamName} to accept - nothing for you to do yet.` : "Open offer - waiting for any team to accept."}
+                </p>
               )}
               <div className="flex gap-2 mt-2 flex-wrap">
                 {t.status === "accepted" && (

@@ -222,6 +222,70 @@ describe("Trading", () => {
     ).rejects.toMatchObject({ code: "conflict" });
   });
 
+  it("lets any other team accept an open offer, fills in the null give-line, and blocks the proposer or a second claimant", async () => {
+    const { event, materials, moderator, teamA, teamB, teamC } = await createStage2Fixture(dbModule.db);
+    await grantInventory(dbModule.db, event.id, teamA.team.id, materials.bricks.id, 10);
+    await grantInventory(dbModule.db, event.id, teamB.team.id, materials.cement.id, 10);
+    await grantInventory(dbModule.db, event.id, teamC.team.id, materials.cement.id, 10);
+
+    // An open offer has no counterparty yet, and its "whoever accepts
+    // provides this" line has a null fromTeamId.
+    const offer = await engine.proposeTrade({
+      eventId: event.id,
+      proposerTeamId: teamA.team.id,
+      counterpartyTeamId: null,
+      proposerParticipantId: teamA.leader.id,
+      lines: [
+        { fromTeamId: teamA.team.id, materialTypeId: materials.bricks.id, quantity: 5 },
+        { fromTeamId: null, materialTypeId: materials.cement.id, quantity: 5 },
+      ],
+    });
+    expect(offer.counterpartyTeamId).toBeNull();
+
+    // The proposer can't accept their own open offer.
+    await expect(
+      engine.acceptTrade({ eventId: event.id, tradeId: offer.id, acceptingParticipantId: teamA.leader.id, acceptingTeamId: teamA.team.id }),
+    ).rejects.toMatchObject({ code: "conflict" });
+
+    // TeamC claims it first.
+    const accepted = await engine.acceptTrade({ eventId: event.id, tradeId: offer.id, acceptingParticipantId: teamC.leader.id, acceptingTeamId: teamC.team.id });
+    expect(accepted.status).toBe("accepted");
+    expect(accepted.counterpartyTeamId).toBe(teamC.team.id);
+
+    const lines = await dbModule.db.select().from(schema.tradeLines).where(dbModule.eq(schema.tradeLines.tradeId, offer.id));
+    const cementLine = lines.find((l: any) => l.materialTypeId === materials.cement.id);
+    expect(cementLine.fromTeamId).toBe(teamC.team.id);
+
+    // TeamB is now too late — it's no longer an open offer.
+    await expect(
+      engine.acceptTrade({ eventId: event.id, tradeId: offer.id, acceptingParticipantId: teamB.leader.id, acceptingTeamId: teamB.team.id }),
+    ).rejects.toMatchObject({ code: "conflict" });
+
+    const registered = await engine.registerTrade({ eventId: event.id, tradeId: offer.id, moderatorParticipantId: moderator.id });
+    expect(registered.status).toBe("registered");
+    await engine.completeTrade({ eventId: event.id, tradeId: offer.id, moderatorParticipantId: moderator.id });
+
+    const [teamARow] = await dbModule.db.select().from(schema.teams).where(dbModule.eq(schema.teams.id, teamA.team.id));
+    const [teamCRow] = await dbModule.db.select().from(schema.teams).where(dbModule.eq(schema.teams.id, teamC.team.id));
+    expect(teamARow.tradeCount).toBe(1);
+    expect(teamCRow.tradeCount).toBe(1);
+  });
+
+  it("rejects an open offer's give-line naming a specific team other than the proposer", async () => {
+    const { event, materials, teamA, teamB } = await createStage2Fixture(dbModule.db);
+    await grantInventory(dbModule.db, event.id, teamA.team.id, materials.bricks.id, 10);
+
+    await expect(
+      engine.proposeTrade({
+        eventId: event.id,
+        proposerTeamId: teamA.team.id,
+        counterpartyTeamId: null,
+        proposerParticipantId: teamA.leader.id,
+        lines: [{ fromTeamId: teamB.team.id, materialTypeId: materials.bricks.id, quantity: 1 }],
+      }),
+    ).rejects.toMatchObject({ code: "conflict" });
+  });
+
   it("conserves total material quantity across both teams and enforces the trade limit", async () => {
     const { event, materials, moderator, teamA, teamB } = await createStage2Fixture(dbModule.db);
     await grantInventory(dbModule.db, event.id, teamA.team.id, materials.bricks.id, 100);
@@ -366,7 +430,7 @@ describe("Cross-team material visibility (getAllTeamsInventory)", () => {
     await grantInventory(dbModule.db, event.id, teamB.team.id, materials.wood.id, 40);
 
     const summaries = await engine.getAllTeamsInventory(event.id);
-    expect(summaries).toHaveLength(2);
+    expect(summaries).toHaveLength(3);
 
     const teamASummary = summaries.find((s: any) => s.teamId === teamA.team.id);
     const teamBSummary = summaries.find((s: any) => s.teamId === teamB.team.id);

@@ -2,6 +2,7 @@
 
 import { use, useCallback, useEffect, useState } from "react";
 import { useSession } from "@/lib/use-session";
+import { useEventSocket } from "@/lib/use-event-socket";
 import { ModNav } from "../mod-nav";
 import { PageFrame } from "@/components/theme/PageFrame";
 import { HeaderBanner } from "@/components/theme/HeaderBanner";
@@ -147,6 +148,19 @@ export default function ModeratorSetupPage({ params }: { params: Promise<{ event
       refreshStaffList();
     }
   }, [sessionStatus, refresh, refreshStaffList]);
+  // This screen never listened for live updates at all - a second
+  // moderator creating/removing staff, or any other broadcast-worthy
+  // change, was invisible here without a manual reload.
+  const { connected } = useEventSocket(sessionStatus === "authenticated" ? eventId : null, () => {
+    refresh();
+    refreshStaffList();
+  });
+  useEffect(() => {
+    if (connected) {
+      refresh();
+      refreshStaffList();
+    }
+  }, [connected, refresh, refreshStaffList]);
 
   useEffect(() => {
     if (overview?.settings && !settingsLoaded) {
