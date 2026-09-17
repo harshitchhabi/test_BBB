@@ -361,10 +361,17 @@ export async function claimReservedKit(params: {
       .for("update");
     if (!round) throw new GameError("conflict", `${material.name}'s round isn't open right now.`);
 
+    // "Ever left pending" is the wrong test here — a PREVIOUS Reserved
+    // Kit claim (by this team or another) also moves a lot straight from
+    // pending to closed without ever opening it for bidding, and must
+    // not itself count as closing the window for every other team still
+    // waiting to claim theirs. opensAt is only ever set by openNextLot,
+    // so "has a lot in this round actually gone live" is the real
+    // window-closing condition the rulebook describes.
     const [everOpened] = await tx
       .select({ id: auctionLots.id })
       .from(auctionLots)
-      .where(and(eq(auctionLots.roundId, round.id), sql`${auctionLots.status} != 'pending'`))
+      .where(and(eq(auctionLots.roundId, round.id), sql`${auctionLots.opensAt} is not null`))
       .limit(1);
     if (everOpened) {
       throw new GameError("conflict", "The Reserved Kit window has closed — open bidding has already started on this material.");

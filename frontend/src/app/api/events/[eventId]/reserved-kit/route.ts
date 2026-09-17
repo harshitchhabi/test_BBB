@@ -12,7 +12,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ eventId
     const { eventId } = await params;
     const participant = await requireParticipant();
     const { teamId, materialTypeId } = await req.json();
-    if (typeof teamId !== "string" || typeof materialTypeId !== "string") {
+    if (typeof teamId !== "string" || teamId.length === 0 || typeof materialTypeId !== "string" || materialTypeId.length === 0) {
       return NextResponse.json({ error: "invalid_input", message: "teamId and materialTypeId are required." }, { status: 400 });
     }
 

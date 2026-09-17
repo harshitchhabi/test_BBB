@@ -1,5 +1,6 @@
 import { eq, and, or } from "db";
 import {
+  events,
   eventSettings,
   teams,
   teamMembers,
@@ -260,6 +261,17 @@ export async function reopenLot(params: { eventId: string; auctionLotId: string;
   return runInTransaction(async (tx, queueBroadcast) => {
     await assertStaffTx(tx, params.eventId, params.actorParticipantId);
 
+    // Locks the whole event, not just this lot's round, before checking
+    // for a live lot — same reasoning as auction-service.ts's
+    // openNextLot: with rulebook v2's multi-round pause/resume, a
+    // DIFFERENT round can be the one currently live, and the real
+    // constraint is event-wide (only one lot live anywhere at a time),
+    // not per-round. Without this, reopening a lot in a paused round
+    // while another round's lot was live would put two lots live at
+    // once — a real gap the multi-round change introduced here until
+    // this fix.
+    await tx.select().from(events).where(eq(events.id, params.eventId)).for("update");
+
     const [lot] = await tx.select().from(auctionLots).where(eq(auctionLots.id, params.auctionLotId)).for("update");
     if (!lot || lot.eventId !== params.eventId) throw new GameError("not_found", "Auction lot not found.");
     if (lot.status !== "closed" && lot.status !== "unsold" && lot.status !== "voided") {
@@ -269,7 +281,7 @@ export async function reopenLot(params: { eventId: string; auctionLotId: string;
     const [otherLive] = await tx
       .select({ id: auctionLots.id })
       .from(auctionLots)
-      .where(and(eq(auctionLots.roundId, lot.roundId), eq(auctionLots.status, "live")));
+      .where(and(eq(auctionLots.eventId, params.eventId), eq(auctionLots.status, "live")));
     if (otherLive) throw new GameError("conflict", "Close the currently live lot before reopening another one.");
 
     const [materialLot] = await tx.select().from(materialLots).where(eq(materialLots.id, lot.materialLotId)).for("update");
@@ -315,6 +327,11 @@ export async function reopenLot(params: { eventId: string; auctionLotId: string;
       .set({ status: "live", opensAt, closesAt, winningBidId: null, winnerTeamId: null })
       .where(eq(auctionLots.id, lot.id))
       .returning();
+
+    // Same as openNextLot: marks this lot's round as "the" one currently
+    // live, so the team-facing Live Auction screen (which reads
+    // event.activeRoundId) actually shows this reopened lot.
+    await tx.update(events).set({ activeRoundId: lot.roundId }).where(eq(events.id, params.eventId));
 
     await recordAudit(tx, {
       eventId: params.eventId,

@@ -156,6 +156,21 @@ describe("Reserved Kit", () => {
     expect(Number(heldLots[0].count)).toBe(2);
   });
 
+  it("lets multiple different teams each claim their own Reserved Kit lot before any bidding starts", async () => {
+    const { event, moderator, teamA, teamB } = await createTestFixture(dbModule.db);
+    const material = await insertMaterial(event.id, { key: "steel-multi-rk", name: "Steel Multi RK Test" });
+    await engine.startRound({ eventId: event.id, materialTypeId: material.id, actorParticipantId: moderator.id });
+
+    // A bug found via a 15-team mock run: teamA's successful claim moves
+    // its lot straight from pending to closed, which a naive "has any
+    // lot left pending" window check would mistake for "bidding has
+    // started" and wrongly refuse every other team's claim. teamB's
+    // claim here must still succeed.
+    await engine.claimReservedKit({ eventId: event.id, teamId: teamA.team.id, materialTypeId: material.id, actingParticipantId: teamA.leader.id });
+    const claimB = await engine.claimReservedKit({ eventId: event.id, teamId: teamB.team.id, materialTypeId: material.id, actingParticipantId: teamB.leader.id });
+    expect(claimB.amount).toBe(320);
+  });
+
   it("closes the window the moment the first lot in that round is opened", async () => {
     const { event, moderator, teamA, teamB } = await createTestFixture(dbModule.db);
     const material = await insertMaterial(event.id, { key: "bricks-rk", name: "Bricks RK Test", defaultLotQuantity: 240, defaultOpeningBid: 240 });
@@ -220,5 +235,31 @@ describe("Multi-round pause/resume", () => {
     // lots still pending) was never fully drained.
     const xLot = await engine.openNextLot({ eventId: event.id, roundId: roundX.id, actorParticipantId: moderator.id });
     expect(xLot.roundId).toBe(roundX.id);
+  });
+
+  it("reopenLot's live-lot check is event-wide too, not just within the reopened lot's own round", async () => {
+    const { event, moderator, material: materialX, teamA } = await createTestFixture(dbModule.db);
+    const materialY = await insertMaterial(event.id, { key: "materialY2", name: "Material Y2", reservedKitEligible: false });
+
+    const roundX = await engine.startRound({ eventId: event.id, materialTypeId: materialX.id, actorParticipantId: moderator.id });
+    const xLot = await engine.openNextLot({ eventId: event.id, roundId: roundX.id, actorParticipantId: moderator.id });
+    await engine.placeBid({ eventId: event.id, auctionLotId: xLot.id, teamId: teamA.team.id, actingParticipantId: teamA.leader.id, amount: xLot.openingBid });
+    await engine.closeLot({ eventId: event.id, auctionLotId: xLot.id, actorParticipantId: moderator.id });
+
+    const roundY = await engine.startRound({ eventId: event.id, materialTypeId: materialY.id, actorParticipantId: moderator.id });
+    const yLot = await engine.openNextLot({ eventId: event.id, roundId: roundY.id, actorParticipantId: moderator.id });
+    // yLot is now live. Reopening X's already-closed lot must be refused
+    // — a bug introduced by multi-round pause/resume would have checked
+    // only roundX for a live lot (finding none) and wrongly allowed a
+    // SECOND lot to go live at the same time as yLot.
+    await expect(
+      engine.reopenLot({ eventId: event.id, auctionLotId: xLot.id, actorParticipantId: moderator.id, reason: "test" }),
+    ).rejects.toMatchObject({ code: "conflict" });
+
+    await engine.closeLot({ eventId: event.id, auctionLotId: yLot.id, actorParticipantId: moderator.id });
+
+    // With nothing else live, reopening X now works.
+    const reopened = await engine.reopenLot({ eventId: event.id, auctionLotId: xLot.id, actorParticipantId: moderator.id, reason: "test" });
+    expect(reopened.status).toBe("live");
   });
 });

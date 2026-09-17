@@ -59,8 +59,28 @@ export async function GET(_req: Request, { params }: { params: Promise<{ eventId
     let pendingLotsCount = 0;
     let recentLots: Array<{ id: string; lotNumber: number; status: string; winnerTeamName: string | null; winningBidId: string | null }> = [];
 
-    if (event.activeRoundId) {
-      const [round] = await db.select().from(auctionRounds).where(eq(auctionRounds.id, event.activeRoundId));
+    // event.activeRoundId only ever points at the round with a currently
+    // LIVE lot (null the instant nothing is live - see
+    // auction-service.ts's openNextLot/closeLot). With rulebook v2's
+    // multi-round pause/resume, a round can be legitimately "active" but
+    // paused (nothing live yet, e.g. right after startRound, which is
+    // exactly when a team most needs to see it to claim a Reserved Kit
+    // lot) - falling back to the most recently started still-active
+    // round keeps this screen showing something sensible instead of
+    // going blank the moment nobody's lot is live.
+    const roundIdToShow =
+      event.activeRoundId ??
+      (
+        await db
+          .select({ id: auctionRounds.id })
+          .from(auctionRounds)
+          .where(and(eq(auctionRounds.eventId, eventId), eq(auctionRounds.status, "active")))
+          .orderBy(desc(auctionRounds.sequence))
+          .limit(1)
+      )[0]?.id;
+
+    if (roundIdToShow) {
+      const [round] = await db.select().from(auctionRounds).where(eq(auctionRounds.id, roundIdToShow));
 
       if (round) {
         const [material] = await db.select().from(materialTypes).where(eq(materialTypes.id, round.materialTypeId));
@@ -72,10 +92,16 @@ export async function GET(_req: Request, { params }: { params: Promise<{ eventId
         }
         let reservedKitWindowOpen = false;
         if (material?.reservedKitEligible) {
+          // opensAt (only ever set by openNextLot) is the real "has a
+          // lot in this round actually gone live" signal - a lot closed
+          // via a Reserved Kit claim itself never gets opensAt set, so
+          // it correctly never counts as closing the window for the
+          // next team's claim (see the identical fix in
+          // claimReservedKit).
           const [everOpened] = await db
             .select({ id: auctionLots.id })
             .from(auctionLots)
-            .where(and(eq(auctionLots.roundId, round.id), sql`${auctionLots.status} != 'pending'`))
+            .where(and(eq(auctionLots.roundId, round.id), sql`${auctionLots.opensAt} is not null`))
             .limit(1);
           reservedKitWindowOpen = !everOpened;
         }

@@ -30,11 +30,16 @@ export async function POST(req: Request, { params }: { params: Promise<{ eventId
       lines.every(
         (line) =>
           line &&
-          (typeof line.fromTeamId === "string" || (isOpenOffer && line.fromTeamId == null)) &&
-          (typeof line.materialTypeId === "string" || line.materialTypeId == null) &&
+          ((typeof line.fromTeamId === "string" && line.fromTeamId.length > 0) || (isOpenOffer && line.fromTeamId == null)) &&
+          ((typeof line.materialTypeId === "string" && line.materialTypeId.length > 0) || line.materialTypeId == null) &&
           isValidAmount(line.quantity),
       );
-    if (typeof proposerTeamId !== "string" || (!isOpenOffer && typeof counterpartyTeamId !== "string") || !linesValid) {
+    if (
+      typeof proposerTeamId !== "string" ||
+      proposerTeamId.length === 0 ||
+      (!isOpenOffer && (typeof counterpartyTeamId !== "string" || counterpartyTeamId.length === 0)) ||
+      !linesValid
+    ) {
       return NextResponse.json(
         {
           error: "invalid_input",
