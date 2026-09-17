@@ -23,6 +23,11 @@ export default function ModeratorTeamsPage({ params }: { params: Promise<{ event
   const [busy, setBusy] = useState(false);
   const [adjustAmount, setAdjustAmount] = useState<Record<string, string>>({});
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [materials, setMaterials] = useState<Array<{ materialTypeId: string; materialName: string }>>([]);
+  const [expandedInventoryTeamId, setExpandedInventoryTeamId] = useState<string | null>(null);
+  const [teamInventory, setTeamInventory] = useState<Array<{ materialTypeId: string; quantity: number }>>([]);
+  const [inventoryLoadError, setInventoryLoadError] = useState<string | null>(null);
+  const [inventoryDelta, setInventoryDelta] = useState<Record<string, string>>({});
 
   const [teamName, setTeamName] = useState("");
   const [teamUsername, setTeamUsername] = useState("");
@@ -39,21 +44,74 @@ export default function ModeratorTeamsPage({ params }: { params: Promise<{ event
 
   const refresh = useCallback(async () => {
     try {
-      const ov = (await fetchEventOverviewFresh(eventId)) as any;
+      const [ov, bankRes] = await Promise.all([
+        fetchEventOverviewFresh(eventId) as Promise<any>,
+        fetch(`/api/events/${eventId}/bank-stock`).then((r) => r.json()),
+      ]);
       setOverview(ov);
+      setMaterials(bankRes.stock ?? []);
       setLoadError(null);
     } catch (err) {
       setLoadError(err instanceof FetchJsonError ? err.message : "Couldn't load this page. Retrying…");
     }
   }, [eventId]);
 
+  const refreshTeamInventory = useCallback(async (teamId: string) => {
+    const res = await fetch(`/api/events/${eventId}/teams/${teamId}/inventory`);
+    const body = await res.json().catch(() => null);
+    if (res.ok) {
+      setTeamInventory(body.inventory ?? []);
+      setInventoryLoadError(null);
+    } else {
+      setInventoryLoadError(body?.message ?? `Couldn't load inventory (${res.status}).`);
+    }
+  }, [eventId]);
+
   useEffect(() => {
     if (status === "authenticated") refresh();
   }, [status, refresh]);
-  const { connected } = useEventSocket(status === "authenticated" ? eventId : null, () => refresh());
+  const { connected } = useEventSocket(status === "authenticated" ? eventId : null, () => {
+    refresh();
+    if (expandedInventoryTeamId) refreshTeamInventory(expandedInventoryTeamId);
+  });
   useEffect(() => {
-    if (connected) refresh();
-  }, [connected, refresh]);
+    if (connected) {
+      refresh();
+      if (expandedInventoryTeamId) refreshTeamInventory(expandedInventoryTeamId);
+    }
+  }, [connected, refresh, expandedInventoryTeamId, refreshTeamInventory]);
+
+  function toggleInventoryEditor(teamId: string) {
+    if (expandedInventoryTeamId === teamId) {
+      setExpandedInventoryTeamId(null);
+      return;
+    }
+    setExpandedInventoryTeamId(teamId);
+    setInventoryDelta({});
+    refreshTeamInventory(teamId);
+  }
+
+  async function applyInventoryAdjustment(teamId: string, materialTypeId: string) {
+    const delta = Number(inventoryDelta[materialTypeId]);
+    if (busyRef.current || !delta) return;
+    busyRef.current = true;
+    setBusy(true);
+    setMessage(null);
+    try {
+      const res = await fetch(`/api/events/${eventId}/teams/${teamId}/adjust-inventory`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ materialTypeId, quantityDelta: delta, reason: "Manual inventory correction." }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) setMessage(body.message ?? `Error (${res.status})`);
+      else setInventoryDelta((d) => ({ ...d, [materialTypeId]: "" }));
+      await refreshTeamInventory(teamId);
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
+    }
+  }
 
   async function call(path: string, body?: unknown, method: "POST" | "DELETE" = "POST") {
     if (busyRef.current) return;
@@ -175,45 +233,81 @@ export default function ModeratorTeamsPage({ params }: { params: Promise<{ event
         )}
         <div className="space-y-2">
           {overview.teams.map((t: any) => (
-            <div key={t.id} className="bg-[#764A21]/40 rounded-lg p-3 text-white flex flex-wrap gap-3 items-center justify-between">
-              <div>
-                <strong>{t.name}</strong> ({t.code}) - {t.status}
-                <div className="text-sm text-white/80">
-                  Tokens: {t.auctionTokens} · Wallet: {t.cityWalletTokens} · Trades: {t.tradeCount}
+            <div key={t.id} className="bg-[#764A21]/40 rounded-lg p-3 text-white">
+              <div className="flex flex-wrap gap-3 items-center justify-between">
+                <div>
+                  <strong>{t.name}</strong> ({t.code}) - {t.status}
+                  <div className="text-sm text-white/80">
+                    Tokens: {t.auctionTokens} · Wallet: {t.cityWalletTokens} · Trades: {t.tradeCount}
+                  </div>
+                </div>
+                <div className="flex gap-2 items-center flex-wrap">
+                  <input
+                    className="w-20 px-2 py-1 rounded text-black text-sm"
+                    placeholder="±tokens"
+                    value={adjustAmount[t.id] ?? ""}
+                    onChange={(e) => setAdjustAmount((a) => ({ ...a, [t.id]: e.target.value }))}
+                  />
+                  <WoodButton
+                    disabled={busy || !adjustAmount[t.id]}
+                    onClick={() => call(`/api/events/${eventId}/teams/${t.id}/adjust-tokens`, { auctionTokensDelta: Number(adjustAmount[t.id]), reason: "Manual correction." })}
+                  >
+                    Apply
+                  </WoodButton>
+                  <WoodButton onClick={() => toggleInventoryEditor(t.id)}>
+                    {expandedInventoryTeamId === t.id ? "Hide inventory" : "Edit inventory"}
+                  </WoodButton>
+                  {t.status === "active" ? (
+                    <>
+                      <WoodButton disabled={busy} onClick={() => call(`/api/events/${eventId}/teams/${t.id}/status`, { status: "withdrawn", reason: "Team withdrew." })}>Withdraw</WoodButton>
+                      <WoodButton variant="danger" disabled={busy} onClick={() => call(`/api/events/${eventId}/teams/${t.id}/status`, { status: "disqualified", reason: "Disqualified by moderator." })}>
+                        Disqualify
+                      </WoodButton>
+                    </>
+                  ) : (
+                    <WoodButton variant="primary" disabled={busy} onClick={() => call(`/api/events/${eventId}/teams/${t.id}/status`, { status: "active", reason: "Reinstated." })}>
+                      Reinstate
+                    </WoodButton>
+                  )}
+                  <WoodButton disabled={busy} onClick={() => resetPassword(t.ownerParticipantId, t.name)}>
+                    Reset password
+                  </WoodButton>
+                  <WoodButton variant="danger" disabled={busy} onClick={() => deleteTeam(t.id, t.name)}>
+                    Delete
+                  </WoodButton>
                 </div>
               </div>
-              <div className="flex gap-2 items-center flex-wrap">
-                <input
-                  className="w-20 px-2 py-1 rounded text-black text-sm"
-                  placeholder="±tokens"
-                  value={adjustAmount[t.id] ?? ""}
-                  onChange={(e) => setAdjustAmount((a) => ({ ...a, [t.id]: e.target.value }))}
-                />
-                <WoodButton
-                  disabled={busy || !adjustAmount[t.id]}
-                  onClick={() => call(`/api/events/${eventId}/teams/${t.id}/adjust-tokens`, { auctionTokensDelta: Number(adjustAmount[t.id]), reason: "Manual correction." })}
-                >
-                  Apply
-                </WoodButton>
-                {t.status === "active" ? (
-                  <>
-                    <WoodButton disabled={busy} onClick={() => call(`/api/events/${eventId}/teams/${t.id}/status`, { status: "withdrawn", reason: "Team withdrew." })}>Withdraw</WoodButton>
-                    <WoodButton variant="danger" disabled={busy} onClick={() => call(`/api/events/${eventId}/teams/${t.id}/status`, { status: "disqualified", reason: "Disqualified by moderator." })}>
-                      Disqualify
-                    </WoodButton>
-                  </>
-                ) : (
-                  <WoodButton variant="primary" disabled={busy} onClick={() => call(`/api/events/${eventId}/teams/${t.id}/status`, { status: "active", reason: "Reinstated." })}>
-                    Reinstate
-                  </WoodButton>
-                )}
-                <WoodButton disabled={busy} onClick={() => resetPassword(t.ownerParticipantId, t.name)}>
-                  Reset password
-                </WoodButton>
-                <WoodButton variant="danger" disabled={busy} onClick={() => deleteTeam(t.id, t.name)}>
-                  Delete
-                </WoodButton>
-              </div>
+
+              {expandedInventoryTeamId === t.id && (
+                <div className="mt-3 bg-black/30 rounded p-3">
+                  <p className="text-yellow-300 font-bold text-sm mb-2">EDIT {t.name.toUpperCase()}'S INVENTORY</p>
+                  {inventoryLoadError && <p className="text-red-100 bg-red-950/80 px-3 py-2 rounded-md font-medium mb-2 text-sm">{inventoryLoadError}</p>}
+                  <div className="space-y-1">
+                    {materials.map((m) => {
+                      const held = teamInventory.find((i: any) => i.materialTypeId === m.materialTypeId)?.quantity ?? 0;
+                      return (
+                        <div key={m.materialTypeId} className="flex items-center gap-2 text-sm">
+                          <span className="flex-1">{m.materialName}</span>
+                          <span className="text-white/70 w-16 text-right">has {held}</span>
+                          <input
+                            className="w-20 px-2 py-1 rounded text-black text-sm"
+                            placeholder="±qty"
+                            value={inventoryDelta[m.materialTypeId] ?? ""}
+                            onChange={(e) => setInventoryDelta((d) => ({ ...d, [m.materialTypeId]: e.target.value }))}
+                          />
+                          <WoodButton
+                            className="px-2 py-1 text-xs"
+                            disabled={busy || !inventoryDelta[m.materialTypeId]}
+                            onClick={() => applyInventoryAdjustment(t.id, m.materialTypeId)}
+                          >
+                            Apply
+                          </WoodButton>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           ))}
         </div>

@@ -3,6 +3,7 @@ import {
   eventSettings,
   teams,
   teamMembers,
+  materialTypes,
   cities,
   cityAuctions,
   cityBids,
@@ -23,6 +24,7 @@ import { recordAudit } from "./audit";
 import { runInTransaction, type Tx } from "./tx";
 import { assertStaffTx } from "./team-service";
 import { generatePassword, hashPassword } from "./auth-service";
+import { getQuantityForMaterial } from "./inventory-service";
 
 // Section 7.9 "Incidents" (Team withdrawal, balance adjustment, dispute
 // note, manual correction) and the CONTINGENCIES chapter's "Bidding and
@@ -134,6 +136,73 @@ export async function adjustTeamTokens(params: {
 
     queueBroadcast({ eventId: params.eventId, type: "moderator.announcement", data: { teamId: team.id, reason: params.reason } });
     return updated;
+  });
+}
+
+// ---------------------------------------------------------------------
+// Manual inventory adjustment
+// ---------------------------------------------------------------------
+
+// Same override pattern as adjustTeamTokens, one material at a time —
+// there is deliberately no mutable stock column to overwrite (Section
+// 5.4: current quantity is always SUM(quantity_delta)), so a manual
+// correction here is itself just one more ledger row, tagged with its
+// own "manual_adjustment" reason so it's always distinguishable in the
+// inventory history from an auction win, trade, bank purchase, or
+// construction consuming stock.
+export async function adjustTeamInventory(params: {
+  eventId: string;
+  teamId: string;
+  materialTypeId: string;
+  quantityDelta: number;
+  actorParticipantId: string;
+  reason?: string;
+}) {
+  return runInTransaction(async (tx, queueBroadcast) => {
+    await assertStaffTx(tx, params.eventId, params.actorParticipantId);
+
+    const [team] = await tx.select().from(teams).where(eq(teams.id, params.teamId)).for("update");
+    if (!team || team.eventId !== params.eventId) throw new GameError("not_found", "Team not found.");
+
+    const [material] = await tx.select().from(materialTypes).where(eq(materialTypes.id, params.materialTypeId));
+    if (!material || material.eventId !== params.eventId) throw new GameError("not_found", "Material not found.");
+
+    if (!Number.isInteger(params.quantityDelta) || params.quantityDelta === 0) {
+      throw new GameError("invalid_input", "quantityDelta must be a non-zero whole number.");
+    }
+
+    const before = await getQuantityForMaterial(tx, params.eventId, team.id, material.id);
+    const after = before + params.quantityDelta;
+    if (after < 0) {
+      throw new GameError("conflict", `This would take ${team.name}'s ${material.name} negative (currently ${before}).`);
+    }
+
+    const [ledgerRow] = await tx
+      .insert(teamInventoryTransactions)
+      .values({
+        eventId: params.eventId,
+        teamId: team.id,
+        materialTypeId: material.id,
+        quantityDelta: params.quantityDelta,
+        reason: "manual_adjustment",
+        createdBy: params.actorParticipantId,
+      })
+      .returning();
+
+    await recordAudit(tx, {
+      eventId: params.eventId,
+      actorParticipantId: params.actorParticipantId,
+      reason: params.reason,
+      isOverride: true,
+      action: "team.inventory_adjusted",
+      entityType: "team",
+      entityId: team.id,
+      beforeJson: { materialTypeId: material.id, quantity: before },
+      afterJson: { materialTypeId: material.id, quantity: after },
+    });
+
+    queueBroadcast({ eventId: params.eventId, type: "inventory.changed", data: { teamId: team.id } });
+    return { teamId: team.id, materialTypeId: material.id, quantity: after, ledgerRowId: ledgerRow.id };
   });
 }
 

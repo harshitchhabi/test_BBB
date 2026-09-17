@@ -169,6 +169,44 @@ describe("Manual correction rehearsal scenarios (Section 10 / CONTINGENCIES)", (
       engine.adjustTeamTokens({ eventId: event.id, teamId: teamA.team.id, auctionTokensDelta: 1, actorParticipantId: teamA.member.id, reason: "x" }),
     ).rejects.toMatchObject({ code: "forbidden" });
   });
+
+  it("adjusts a team's material inventory as its own ledger row, refuses to push it negative, and requires staff", async () => {
+    const { event, moderator, material, teamA } = await createTestFixture(dbModule.db);
+
+    const credited = await engine.adjustTeamInventory({
+      eventId: event.id,
+      teamId: teamA.team.id,
+      materialTypeId: material.id,
+      quantityDelta: 25,
+      actorParticipantId: moderator.id,
+      reason: "Backfilling materials handed out off-system.",
+    });
+    expect(credited.quantity).toBe(25);
+
+    const inventory = await engine.getTeamInventory(event.id, teamA.team.id);
+    expect(inventory.find((i: any) => i.materialTypeId === material.id)?.quantity).toBe(25);
+
+    // The ledger row is tagged as its own reason, distinguishable from
+    // every other credit/debit source.
+    const rows = await dbModule.db
+      .select()
+      .from(schema.teamInventoryTransactions)
+      .where(dbModule.and(dbModule.eq(schema.teamInventoryTransactions.teamId, teamA.team.id), dbModule.eq(schema.teamInventoryTransactions.materialTypeId, material.id)));
+    expect(rows).toHaveLength(1);
+    expect(rows[0].reason).toBe("manual_adjustment");
+
+    await expect(
+      engine.adjustTeamInventory({ eventId: event.id, teamId: teamA.team.id, materialTypeId: material.id, quantityDelta: -100, actorParticipantId: moderator.id, reason: "test" }),
+    ).rejects.toMatchObject({ code: "conflict" });
+
+    await expect(
+      engine.adjustTeamInventory({ eventId: event.id, teamId: teamA.team.id, materialTypeId: material.id, quantityDelta: 1, actorParticipantId: teamA.member.id, reason: "x" }),
+    ).rejects.toMatchObject({ code: "forbidden" });
+
+    await expect(
+      engine.adjustTeamInventory({ eventId: event.id, teamId: teamA.team.id, materialTypeId: material.id, quantityDelta: 0, actorParticipantId: moderator.id, reason: "x" }),
+    ).rejects.toMatchObject({ code: "invalid_input" });
+  });
 });
 
 describe("Event staff bootstrap", () => {
