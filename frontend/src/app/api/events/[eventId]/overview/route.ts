@@ -30,6 +30,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ eventId
         auctionTokens: teams.auctionTokens,
         cityWalletTokens: teams.cityWalletTokens,
         tradeCount: teams.tradeCount,
+        inspectionCount: teams.inspectionCount,
         status: teams.status,
         ownerParticipantId: teams.ownerParticipantId,
       })
@@ -42,7 +43,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ eventId
       : teamRows.map((t) =>
           t.id === ctx.team?.teamId
             ? t
-            : { id: t.id, name: t.name, status: t.status, code: null, auctionTokens: null, cityWalletTokens: null, tradeCount: null, ownerParticipantId: null },
+            : { id: t.id, name: t.name, status: t.status, code: null, auctionTokens: null, cityWalletTokens: null, tradeCount: null, inspectionCount: null, ownerParticipantId: null },
         );
 
     const myTeam = teamRows.find((t) => t.id === ctx.team?.teamId) ?? null;

@@ -57,7 +57,8 @@ export default function ModeratorTeamsPage({ params }: { params: Promise<{ event
       const res = await fetch(path, { method, headers: { "content-type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) setMessage(json.message ?? `Error (${res.status})`);
-      else refresh();
+      // Refresh either way - see the same fix on the Trade Desk console.
+      await refresh();
     } finally {
       setBusy(false);
     }

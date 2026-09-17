@@ -114,10 +114,11 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ eventId:
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) setError(body.message ?? `Bid rejected (${res.status}).`);
-      else {
-        setBidAmount("");
-        refresh();
-      }
+      else setBidAmount("");
+      // Refresh either way: a rejected bid can mean the lot closed or a
+      // new one opened in the moment between render and click - reload
+      // the real state so this screen doesn't keep showing a dead lot.
+      await refresh();
     } finally {
       setSubmitting(false);
     }

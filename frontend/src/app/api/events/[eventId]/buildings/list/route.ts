@@ -7,24 +7,30 @@ import { requireParticipant, apiErrorResponse } from "@/lib/api";
 
 // GET /events/:id/buildings/list — Section 7.5 "Constructed buildings /
 // deeds / bonuses / current base score" and the moderator Build/Deed
-// desk's building list. A team only sees its own; staff can pass
-// ?teamId= to filter, or omit it to see every team's buildings (for the
-// void/inspect workflow).
+// desk's building list. ?teamId= filters to one team (any participant
+// of the event may pass ANY team's id, or omit it to see every team's
+// buildings); a constructed building is meant to be visible across
+// teams once built — a team can only ever request an inspection
+// (Section 7.6) by first being able to see what other teams have built
+// to challenge, which this previously made structurally impossible for
+// a non-staff caller (teamFilter was hard-forced to the caller's own
+// team, silently ignoring any ?teamId= they passed).
 export async function GET(req: NextRequest, { params }: { params: Promise<{ eventId: string }> }) {
   try {
     const { eventId } = await params;
     const participant = await requireParticipant();
     const ctx = await getParticipantContext(eventId, participant.id);
-    const staff = isStaff(ctx);
+    if (!isStaff(ctx) && !ctx.team) {
+      return NextResponse.json({ error: "forbidden", message: "You are not part of this event." }, { status: 403 });
+    }
 
-    const requestedTeamId = req.nextUrl.searchParams.get("teamId");
-    const teamFilter = staff ? requestedTeamId : ctx.team?.teamId;
+    const teamFilter = req.nextUrl.searchParams.get("teamId");
 
     const whereClause = teamFilter
       ? and(eq(constructedBuildings.eventId, eventId), eq(constructedBuildings.teamId, teamFilter))
       : eq(constructedBuildings.eventId, eventId);
 
-    const buildings = staff || teamFilter ? await db.select().from(constructedBuildings).where(whereClause) : [];
+    const buildings = await db.select().from(constructedBuildings).where(whereClause);
 
     const recipeRows = await db.select().from(buildingRecipes).where(eq(buildingRecipes.eventId, eventId));
     const recipeById = new Map(recipeRows.map((r) => [r.id, r]));

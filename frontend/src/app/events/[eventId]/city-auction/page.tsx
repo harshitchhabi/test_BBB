@@ -106,10 +106,11 @@ export default function CityAuctionPage({ params }: { params: Promise<{ eventId:
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) setMessage(body.message ?? `Something went wrong (${res.status}). Please try again.`);
-      else {
-        setBidAmount("");
-        refresh();
-      }
+      else setBidAmount("");
+      // Refresh either way - a rejected bid can mean this auction just
+      // closed (timer or a moderator) - reload so a dead auction stops
+      // showing a bid form for it.
+      await refresh();
     } finally {
       setBusy(false);
     }

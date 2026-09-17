@@ -315,10 +315,11 @@ export default function ModeratorSetupPage({ params }: { params: Promise<{ event
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) setStageMessage(body.message ?? `Something went wrong (${res.status}). Please try again.`);
-      else {
-        setPauseReason("");
-        refresh();
-      }
+      else setPauseReason("");
+      // Refresh either way - a rejected stage change usually means
+      // another staff member (or an auto-transition) already moved the
+      // event since this screen last loaded.
+      await refresh();
     } finally {
       setStageBusy(false);
     }
@@ -339,8 +340,8 @@ export default function ModeratorSetupPage({ params }: { params: Promise<{ event
       else {
         setResetReason("");
         setResetConfirmed(false);
-        refresh();
       }
+      await refresh();
     } finally {
       setResetBusy(false);
     }
@@ -367,8 +368,8 @@ export default function ModeratorSetupPage({ params }: { params: Promise<{ event
         setForceTarget("");
         setForceReason("");
         setForceConfirmed(false);
-        refresh();
       }
+      await refresh();
     } finally {
       setForceBusy(false);
     }

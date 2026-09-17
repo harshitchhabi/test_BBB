@@ -25,6 +25,8 @@ export default function TradeBuildPage({ params }: { params: Promise<{ eventId: 
   const [myTrades, setMyTrades] = useState<any[]>([]);
   const [bankStock, setBankStock] = useState<any[]>([]);
   const [teamsInventory, setTeamsInventory] = useState<any[]>([]);
+  const [allBuildings, setAllBuildings] = useState<any[]>([]);
+  const [inspectTargetId, setInspectTargetId] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -41,25 +43,24 @@ export default function TradeBuildPage({ params }: { params: Promise<{ eventId: 
       // roughly its slowest single request instead of the sum of all
       // four, which matters a lot given this refresh reruns on every
       // WebSocket broadcast (any team's bid, trade, or build).
-      const [ov, materials, rec, tr, ti] = await Promise.all([
+      const [ov, materials, rec, tr, ti, ab] = await Promise.all([
         fetchEventOverviewFresh(eventId) as Promise<any>,
         fetchJson<any>(`/api/events/${eventId}/bank-stock`),
         fetchJson<any>(`/api/events/${eventId}/recipes`),
         fetchJson<any>(`/api/events/${eventId}/trades/list`),
         fetchJson<any>(`/api/events/${eventId}/teams-inventory`),
+        fetchJson<any>(`/api/events/${eventId}/buildings/list`),
       ]);
       setOverview(ov);
       setBankStock(materials.stock);
       setRecipes(rec.recipes);
       setMyTrades(tr.trades);
       setTeamsInventory(ti.teams);
+      setAllBuildings(ab.buildings);
       if (ov.myTeam) {
-        const [inv, bld] = await Promise.all([
-          fetchJson<any>(`/api/events/${eventId}/teams/${ov.myTeam.id}/inventory`),
-          fetchJson<any>(`/api/events/${eventId}/buildings/list?teamId=${ov.myTeam.id}`),
-        ]);
+        const inv = await fetchJson<any>(`/api/events/${eventId}/teams/${ov.myTeam.id}/inventory`);
         setInventory(inv.inventory);
-        setMyBuildings(bld.buildings);
+        setMyBuildings(ab.buildings.filter((b: any) => b.teamId === ov.myTeam.id));
       }
       setLoadError(null);
     } catch (err) {
@@ -111,10 +112,11 @@ export default function TradeBuildPage({ params }: { params: Promise<{ eventId: 
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) setMessage(body.message ?? `Something went wrong (${res.status}). Please try again.`);
-      else {
-        setTradeLines([{ fromMe: true, materialTypeId: "", quantity: "" }]);
-        refresh();
-      }
+      else setTradeLines([{ fromMe: true, materialTypeId: "", quantity: "" }]);
+      // Refresh either way - a rejected proposal can mean the trade
+      // limit or counterparty state changed since this screen last
+      // loaded.
+      await refresh();
     } finally {
       setBusy(false);
     }
@@ -128,7 +130,10 @@ export default function TradeBuildPage({ params }: { params: Promise<{ eventId: 
       const res = await fetch(`/api/events/${eventId}/trades/${tradeId}/${action}`, { method: "POST" });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) setMessage(body.message ?? `Something went wrong (${res.status}). Please try again.`);
-      else refresh();
+      // Refresh either way: the other team may have just withdrawn or a
+      // moderator may have already cancelled this exact trade - reload
+      // so a dead accept/decline button doesn't linger.
+      await refresh();
     } finally {
       setBusy(false);
     }
@@ -146,7 +151,36 @@ export default function TradeBuildPage({ params }: { params: Promise<{ eventId: 
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) setMessage(body.message ?? `Something went wrong (${res.status}). Please try again.`);
-      else refresh();
+      await refresh();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // Section 7.6: any team can challenge another team's claimed building
+  // by paying the inspection fee; if it fails, the building is voided.
+  // This had a real, silent gap: requestInspection (the engine function)
+  // and its route existed with no caller anywhere in the frontend, and
+  // buildings/list additionally hard-forced non-staff callers to only
+  // ever see their OWN team's buildings - so even a team that somehow
+  // knew about this feature had no way to see what to challenge. Both
+  // fixed together: the list route now shares buildings across teams
+  // the same way materials/trades already do, and this is the missing
+  // UI to actually use it.
+  async function requestInspection() {
+    if (!overview?.myTeam || busy || !inspectTargetId) return;
+    setBusy(true);
+    setMessage(null);
+    try {
+      const res = await fetch(`/api/events/${eventId}/inspections`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ challengerTeamId: overview.myTeam.id, targetBuildingId: inspectTargetId }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) setMessage(body.message ?? `Something went wrong (${res.status}). Please try again.`);
+      else setInspectTargetId("");
+      await refresh();
     } finally {
       setBusy(false);
     }
@@ -401,6 +435,39 @@ export default function TradeBuildPage({ params }: { params: Promise<{ eventId: 
           ))}
         </div>
       </Panel>
+
+      {overview.settings.inspectionsEnabled && (
+        <Panel className="w-full mt-4 border-2 border-red-800">
+          <PanelTitle>
+            CHALLENGE A BUILDING (INSPECTION) - {overview.settings.inspectionLimitPerTeam - (overview.myTeam.inspectionCount ?? 0)} REMAINING
+          </PanelTitle>
+          <p className="text-white/70 text-sm mb-3">
+            Pay {overview.settings.inspectionCost} tokens to challenge another team's claimed building. If it fails
+            inspection, it's voided and its materials return to the bank; either way, the fee is not refunded.
+          </p>
+          {overview.myRole === "leader" ? (
+            <div className="flex gap-2 flex-wrap">
+              <select value={inspectTargetId} onChange={(e) => setInspectTargetId(e.target.value)} className="flex-1 min-w-48 px-3 py-2 rounded text-black">
+                <option value="">Choose a building to challenge…</option>
+                {allBuildings
+                  .filter((b: any) => b.teamId !== overview.myTeam.id && b.status !== "voided")
+                  .map((b: any) => (
+                    <option key={b.id} value={b.id}>{b.teamName} - {b.deedNumber} ({b.recipeName})</option>
+                  ))}
+              </select>
+              <WoodButton
+                variant="danger"
+                disabled={busy || !inspectTargetId || (overview.myTeam.inspectionCount ?? 0) >= overview.settings.inspectionLimitPerTeam}
+                onClick={requestInspection}
+              >
+                Request inspection
+              </WoodButton>
+            </div>
+          ) : (
+            <p className="text-[#F1EBB5] text-sm">Only your team leader can request an inspection.</p>
+          )}
+        </Panel>
+      )}
     </PageFrame>
   );
 }

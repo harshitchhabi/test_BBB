@@ -38,6 +38,12 @@ export async function getBankStock(eventId: string) {
       // lotQuantityOverride.
       defaultLotQuantity: materialTypes.defaultLotQuantity,
       defaultOpeningBid: materialTypes.defaultOpeningBid,
+      // Lets the Inventory screen's "buy from bank" form preview the
+      // exact cost (base price + tax) before submitting, using the same
+      // formula purchaseFromBank charges below - the server still
+      // computes and enforces the real total, this is just so a team
+      // isn't buying blind.
+      stickerPrice: materialTypes.stickerPrice,
       availableQuantity: sql<number>`coalesce(sum(${materialLots.quantity}), 0)`,
     })
     .from(materialTypes)
@@ -46,7 +52,7 @@ export async function getBankStock(eventId: string) {
       and(eq(materialLots.materialTypeId, materialTypes.id), eq(materialLots.status, "bank_stock")),
     )
     .where(eq(materialTypes.eventId, eventId))
-    .groupBy(materialTypes.id, materialTypes.key, materialTypes.name, materialTypes.isRare, materialTypes.defaultLotQuantity, materialTypes.defaultOpeningBid);
+    .groupBy(materialTypes.id, materialTypes.key, materialTypes.name, materialTypes.isRare, materialTypes.defaultLotQuantity, materialTypes.defaultOpeningBid, materialTypes.stickerPrice);
 }
 
 export async function purchaseFromBank(params: {

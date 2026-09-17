@@ -45,7 +45,13 @@ export default function ModeratorTradesPage({ params }: { params: Promise<{ even
       const res = await fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) setMessage(json.message ?? `Error (${res.status})`);
-      else refresh();
+      // Refresh either way: a rejected action here (e.g. trying to
+      // register/complete a trade someone else just cancelled) almost
+      // always means this screen's own view of a row is stale - reload
+      // immediately instead of leaving a dead button with no self-
+      // correction short of a manual page reload (same class of bug
+      // found and fixed on the Stage 1 and Cities consoles).
+      await refresh();
     } finally {
       setBusy(false);
     }

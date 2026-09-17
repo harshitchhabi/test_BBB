@@ -8,7 +8,7 @@ import { fetchEventOverviewFresh } from "@/lib/use-event-overview";
 import { TeamNav } from "../team-nav";
 import { PageFrame } from "@/components/theme/PageFrame";
 import { HeaderBanner } from "@/components/theme/HeaderBanner";
-import { Panel, PanelTitle } from "@/components/theme/Panel";
+import { Panel, PanelTitle, WoodButton } from "@/components/theme/Panel";
 
 // Section 7.4 Inventory screen, styled with the legacy cart page's exact
 // banner/panel treatment (cart/page.tsx's "Won Auctions Panel" pattern).
@@ -19,6 +19,10 @@ export default function InventoryPage({ params }: { params: Promise<{ eventId: s
   const [inventory, setInventory] = useState<any[] | null>(null);
   const [bankStock, setBankStock] = useState<any[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [buyMaterialTypeId, setBuyMaterialTypeId] = useState("");
+  const [buyQuantity, setBuyQuantity] = useState("");
+  const [buyBusy, setBuyBusy] = useState(false);
+  const [buyMessage, setBuyMessage] = useState<{ text: string; ok: boolean } | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -45,8 +49,43 @@ export default function InventoryPage({ params }: { params: Promise<{ eventId: s
     if (connected) refresh();
   }, [connected, refresh]);
 
+  async function buyFromBank() {
+    if (!overview?.myTeam || buyBusy || !buyMaterialTypeId || !buyQuantity) return;
+    setBuyBusy(true);
+    setBuyMessage(null);
+    try {
+      const res = await fetch(`/api/events/${eventId}/bank-purchases`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ teamId: overview.myTeam.id, materialTypeId: buyMaterialTypeId, quantity: Number(buyQuantity) }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setBuyMessage({ text: body.message ?? `Something went wrong (${res.status}). Please try again.`, ok: false });
+      } else {
+        setBuyMessage({ text: `Bought ${body.quantity} for ${body.totalCost} tokens (${body.basePrice} + ${body.taxAmount} tax).`, ok: true });
+        setBuyQuantity("");
+      }
+      await refresh();
+    } finally {
+      setBuyBusy(false);
+    }
+  }
+
   if (loadError && !overview) return <PageFrame><p className="text-red-100 bg-red-950/80 px-3 py-2 rounded-md font-medium text-center mt-8">{loadError}</p></PageFrame>;
   if (!overview) return <PageFrame><p className="text-[#F1EBB5]">Loading…</p></PageFrame>;
+
+  const buyMaterial = bankStock?.find((s) => s.materialTypeId === buyMaterialTypeId);
+  const buyTaxPercent = buyMaterial ? (buyMaterial.isRare ? overview.settings.rareBankTaxPercent : overview.settings.normalBankTaxPercent) : 0;
+  const buyQuantityNum = Number(buyQuantity);
+  const buyPreview =
+    buyMaterial && Number.isInteger(buyQuantityNum) && buyQuantityNum > 0
+      ? (() => {
+          const basePrice = buyMaterial.stickerPrice * buyQuantityNum;
+          const taxAmount = Math.ceil((basePrice * buyTaxPercent) / 100);
+          return { basePrice, taxAmount, totalCost: basePrice + taxAmount };
+        })()
+      : null;
 
   return (
     <PageFrame>
@@ -85,6 +124,53 @@ export default function InventoryPage({ params }: { params: Promise<{ eventId: s
             </div>
           ))}
         </div>
+
+        {overview.myTeam && overview.event.status === "stage_2" && (
+          <div className="mt-4 pt-4 border-t border-white/10">
+            {overview.myRole === "leader" ? (
+              <>
+                <div className="flex gap-2 flex-wrap items-center">
+                  <select
+                    value={buyMaterialTypeId}
+                    onChange={(e) => setBuyMaterialTypeId(e.target.value)}
+                    className="flex-1 min-w-40 px-3 py-2 rounded text-black"
+                  >
+                    <option value="">Buy which material…</option>
+                    {bankStock
+                      ?.filter((s) => s.availableQuantity > 0)
+                      .map((s) => (
+                        <option key={s.materialTypeId} value={s.materialTypeId}>{s.materialName} ({s.availableQuantity} left)</option>
+                      ))}
+                  </select>
+                  <input
+                    type="number"
+                    min={1}
+                    max={buyMaterial?.availableQuantity}
+                    value={buyQuantity}
+                    onChange={(e) => setBuyQuantity(e.target.value)}
+                    placeholder="qty"
+                    className="w-24 px-3 py-2 rounded text-black"
+                  />
+                  <WoodButton variant="primary" disabled={buyBusy || !buyMaterialTypeId || !buyQuantity} onClick={buyFromBank}>
+                    {buyBusy ? "Buying…" : "Buy"}
+                  </WoodButton>
+                </div>
+                {buyPreview && (
+                  <p className="text-white/70 text-sm mt-2">
+                    {buyPreview.basePrice} + {buyPreview.taxAmount} tax = <strong className="text-yellow-300">{buyPreview.totalCost} tokens</strong>
+                  </p>
+                )}
+                {buyMessage && (
+                  <p className={`px-3 py-2 rounded-md font-medium mt-2 ${buyMessage.ok ? "text-green-100 bg-green-950/80" : "text-red-100 bg-red-950/80"}`}>
+                    {buyMessage.text}
+                  </p>
+                )}
+              </>
+            ) : (
+              <p className="text-[#F1EBB5] text-sm">Only your team leader can buy from the bank.</p>
+            )}
+          </div>
+        )}
       </Panel>
     </PageFrame>
   );
