@@ -57,7 +57,13 @@ export const eventSettings = pgTable("event_settings", {
   eventId: uuid("event_id")
     .primaryKey()
     .references(() => events.id, { onDelete: "cascade" }),
-  stage1StartingTokens: integer("stage_1_starting_tokens").notNull().default(1000),
+  // Rulebook v3: raised 1000 -> 2500 (the opening bid for one lot of
+  // every material still sums to 3,510, so a full 13-material kit
+  // remains unreachable solo, but most individual buildings no longer
+  // are - see Appendix D Check 8 for exactly which stay trade-mandatory
+  // by construction regardless of budget: Mall/Apartment/University via
+  // the sheer cost, Hospital/Industry via the Lot Cap ceiling itself).
+  stage1StartingTokens: integer("stage_1_starting_tokens").notNull().default(2500),
   cityWalletTokens: integer("city_wallet_tokens").notNull().default(500),
   minimumRaiseStandard: integer("minimum_raise_standard").notNull().default(50),
   minimumRaiseLowOpening: integer("minimum_raise_low_opening").notNull().default(25),
@@ -134,7 +140,12 @@ export const teams = pgTable(
     ownerParticipantId: uuid("owner_participant_id")
       .notNull()
       .references(() => participants.id),
-    auctionTokens: integer("auction_tokens").notNull().default(1000),
+    // Column-level default only matters if a row is ever inserted
+    // without going through createTeamTx (team-service.ts), which
+    // always explicitly passes settings.stage1StartingTokens instead -
+    // kept in sync with that setting's own default (rulebook v3: 2500)
+    // so the two never quietly disagree.
+    auctionTokens: integer("auction_tokens").notNull().default(2500),
     cityWalletTokens: integer("city_wallet_tokens").notNull().default(500),
     tradeCount: integer("trade_count").notNull().default(0),
     scoutReportCount: integer("scout_report_count").notNull().default(0),

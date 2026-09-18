@@ -30,16 +30,22 @@ import { assertTeamLeaderTx, assertStaffTx } from "./team-service";
 //     (Section 3.1 #5 / Section 5.3 "never silently discard a rejected
 //     bid") rather than just bouncing an error back to the client.
 
-// Rulebook v2: the five "split" materials (Bricks/Cement/Steel/Wood/
-// Glass) raise by 50; every other material raises by 25 — a flat rule
-// keyed off the material itself, not the opening-bid-tier formula
+// Rulebook v3: the five "split" materials (Bricks/Cement/Steel/Wood/
+// Glass) raise by 50, EXCEPT a specific lot within them raises by only
+// 25 if that lot's own opening bid is under 100 - the rule is
+// per-lot, not per-material (Wood's new opening bid, 96, is the one
+// case that hits this in practice, but the same threshold naturally
+// covers any future case where a shock adjusts a split material's
+// opening bid down below 100 too, e.g. Glass Surplus). Every other
+// (non-split) material is flatly 25 regardless of its opening bid, per
+// the rulebook's own table (Medical opens at 125 and still gets 25) -
+// none of this is the generic opening-bid-tier formula
 // event_settings.minimumRaise{Standard,LowOpening}/lowOpeningThreshold
-// still drives for the city auction. That generic tier formula would
-// actually give the WRONG number here for at least two materials (Wood
-// opens at 96, Medical at 125 — both would land on the wrong side of a
-// generic threshold).
-function minimumRaiseFor(material: { splitLots: boolean }): number {
-  return material.splitLots ? 50 : 25;
+// still drives for the city auction, which would get Wood AND Medical
+// wrong if reused here.
+function minimumRaiseFor(material: { splitLots: boolean }, lotOpeningBid: number): number {
+  if (!material.splitLots) return 25;
+  return lotOpeningBid < 100 ? 25 : 50;
 }
 
 // Rulebook v2 Lot Cap: a hard, unconditional ceiling — no team may ever
@@ -218,8 +224,6 @@ export async function startRound(params: {
       })
       .returning();
 
-    const minimumRaise = minimumRaiseFor(material);
-
     for (let lotNumber = 1; lotNumber <= lotCount; lotNumber++) {
       const thisLotOpeningBid = perLotOpeningBidOverrides.get(lotNumber) ?? openingBid;
       const [materialLot] = await tx
@@ -240,7 +244,7 @@ export async function startRound(params: {
         materialLotId: materialLot.id,
         lotNumber,
         openingBid: thisLotOpeningBid,
-        minimumRaise,
+        minimumRaise: minimumRaiseFor(material, thisLotOpeningBid),
         status: "pending",
       });
     }

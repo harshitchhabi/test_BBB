@@ -69,6 +69,22 @@ function assertLinesBelongToTrade(lines: TradeLineInput[], proposerTeamId: strin
   }
 }
 
+// Rulebook v3: every trade is 1-to-1 - one material (or token) type for
+// one other, e.g. "50 Glass for 200 Bricks." A trade can no longer
+// bundle three or more types into one exchange; that now needs multiple
+// separate trades, each counting against the 4-trade cap on its own.
+// Enforced as exactly two lines, one from each side - two lines from
+// the SAME side (e.g. the proposer giving two different materials with
+// nothing coming back) isn't a swap and isn't allowed either.
+function assertOneToOneShape(lines: TradeLineInput[]) {
+  if (lines.length !== 2) {
+    throw new GameError("conflict", "Every trade must be 1-to-1 — exactly one material or token type from each side. Propose separate trades for anything larger.");
+  }
+  if (lines[0].fromTeamId === lines[1].fromTeamId) {
+    throw new GameError("conflict", "A trade needs one line from each side — both lines can't come from the same team.");
+  }
+}
+
 export async function proposeTrade(params: {
   eventId: string;
   proposerTeamId: string;
@@ -87,6 +103,7 @@ export async function proposeTrade(params: {
       throw new GameError("conflict", "A team cannot trade with itself.");
     }
     assertLinesBelongToTrade(params.lines, params.proposerTeamId, counterpartyTeamId);
+    assertOneToOneShape(params.lines);
 
     const [nextNumber] = await tx
       .select({ n: sql<number>`coalesce(max(${trades.tradeNumber}), 0)` })

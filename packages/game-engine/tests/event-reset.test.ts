@@ -125,7 +125,8 @@ describe("resetEventForNewRound", () => {
     const round1Username = leader1.username;
     const [leader2] = await dbModule.db.insert(schema.participants).values({ name: "Leader2", email: `leader2-${event.id}@test.local`, username: round1Username, passwordHash: "$2a$10$CwTycUXWue0Thq9StjUM0uJ8oxL/Yjyq6XvXqAtVvjGdiWZOWXQNi" }).returning();
     const team2 = await engine.createTeam({ eventId: event.id, ownerParticipantId: leader2.id, name: "Round2Team" });
-    expect(team2.auctionTokens).toBe(1000); // fresh starting balance, not round 1's leftover
+    const [settingsRow] = await dbModule.db.select().from(schema.eventSettings).where(dbModule.eq(schema.eventSettings.eventId, event.id));
+    expect(team2.auctionTokens).toBe(settingsRow.stage1StartingTokens); // fresh starting balance, not round 1's leftover
 
     await engine.setEventStatus({ eventId: event.id, status: "stage_1", actorParticipantId: moderator.id });
     const round2 = await engine.startRound({ eventId: event.id, materialTypeId: material.id, actorParticipantId: moderator.id });

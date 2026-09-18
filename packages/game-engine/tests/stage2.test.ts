@@ -161,7 +161,10 @@ describe("Trading", () => {
       proposerTeamId: teamA.team.id,
       counterpartyTeamId: teamB.team.id,
       proposerParticipantId: teamA.leader.id,
-      lines: [{ fromTeamId: teamA.team.id, materialTypeId: materials.bricks.id, quantity: 5 }],
+      lines: [
+        { fromTeamId: teamA.team.id, materialTypeId: materials.bricks.id, quantity: 5 },
+        { fromTeamId: teamB.team.id, materialTypeId: null, quantity: 50 },
+      ],
     });
 
     // A moderator can't jump straight to registering an unaccepted trade
@@ -191,7 +194,10 @@ describe("Trading", () => {
       proposerTeamId: teamA.team.id,
       counterpartyTeamId: teamB.team.id,
       proposerParticipantId: teamA.leader.id,
-      lines: [{ fromTeamId: teamA.team.id, materialTypeId: materials.bricks.id, quantity: 1 }],
+      lines: [
+        { fromTeamId: teamA.team.id, materialTypeId: materials.bricks.id, quantity: 1 },
+        { fromTeamId: teamB.team.id, materialTypeId: null, quantity: 10 },
+      ],
     });
     const afterDecline = await engine.declineTrade({ eventId: event.id, tradeId: declined.id, decliningParticipantId: teamB.leader.id });
     expect(afterDecline.status).toBe("rejected");
@@ -202,7 +208,10 @@ describe("Trading", () => {
       proposerTeamId: teamA.team.id,
       counterpartyTeamId: teamB.team.id,
       proposerParticipantId: teamA.leader.id,
-      lines: [{ fromTeamId: teamA.team.id, materialTypeId: materials.bricks.id, quantity: 1 }],
+      lines: [
+        { fromTeamId: teamA.team.id, materialTypeId: materials.bricks.id, quantity: 1 },
+        { fromTeamId: teamB.team.id, materialTypeId: null, quantity: 10 },
+      ],
     });
     const afterWithdraw = await engine.declineTrade({ eventId: event.id, tradeId: withdrawn.id, decliningParticipantId: teamA.leader.id });
     expect(afterWithdraw.status).toBe("rejected");
@@ -214,7 +223,10 @@ describe("Trading", () => {
       proposerTeamId: teamA.team.id,
       counterpartyTeamId: teamB.team.id,
       proposerParticipantId: teamA.leader.id,
-      lines: [{ fromTeamId: teamA.team.id, materialTypeId: materials.bricks.id, quantity: 1 }],
+      lines: [
+        { fromTeamId: teamA.team.id, materialTypeId: materials.bricks.id, quantity: 1 },
+        { fromTeamId: teamB.team.id, materialTypeId: null, quantity: 10 },
+      ],
     });
     await engine.acceptTrade({ eventId: event.id, tradeId: accepted.id, acceptingParticipantId: teamB.leader.id });
     await expect(
@@ -295,7 +307,10 @@ describe("Trading", () => {
       proposerTeamId: teamA.team.id,
       counterpartyTeamId: teamB.team.id,
       proposerParticipantId: teamA.leader.id,
-      lines: [{ fromTeamId: teamA.team.id, materialTypeId: materials.bricks.id, quantity: 30 }],
+      lines: [
+        { fromTeamId: teamA.team.id, materialTypeId: materials.bricks.id, quantity: 30 },
+        { fromTeamId: teamB.team.id, materialTypeId: null, quantity: 50 },
+      ],
     });
     await engine.acceptTrade({ eventId: event.id, tradeId: trade.id, acceptingParticipantId: teamB.leader.id });
     await engine.registerTrade({ eventId: event.id, tradeId: trade.id, moderatorParticipantId: moderator.id });
@@ -322,7 +337,10 @@ describe("Trading", () => {
         proposerTeamId: teamA.team.id,
         counterpartyTeamId: teamB.team.id,
         proposerParticipantId: teamA.leader.id,
-        lines: [{ fromTeamId: teamA.team.id, materialTypeId: materials.bricks.id, quantity: 1 }],
+        lines: [
+          { fromTeamId: teamA.team.id, materialTypeId: materials.bricks.id, quantity: 1 },
+          { fromTeamId: teamB.team.id, materialTypeId: null, quantity: 5 },
+        ],
       });
       await engine.acceptTrade({ eventId: event.id, tradeId: t.id, acceptingParticipantId: teamB.leader.id });
       await engine.registerTrade({ eventId: event.id, tradeId: t.id, moderatorParticipantId: moderator.id });
@@ -338,7 +356,10 @@ describe("Trading", () => {
       proposerTeamId: teamA.team.id,
       counterpartyTeamId: teamB.team.id,
       proposerParticipantId: teamA.leader.id,
-      lines: [{ fromTeamId: teamA.team.id, materialTypeId: materials.bricks.id, quantity: 1 }],
+      lines: [
+        { fromTeamId: teamA.team.id, materialTypeId: materials.bricks.id, quantity: 1 },
+        { fromTeamId: teamB.team.id, materialTypeId: null, quantity: 5 },
+      ],
     });
     await engine.acceptTrade({ eventId: event.id, tradeId: fifthTrade.id, acceptingParticipantId: teamB.leader.id });
     await engine.registerTrade({ eventId: event.id, tradeId: fifthTrade.id, moderatorParticipantId: moderator.id });
@@ -388,7 +409,10 @@ describe("Tokens-for-materials trading", () => {
       proposerTeamId: teamA.team.id,
       counterpartyTeamId: teamB.team.id,
       proposerParticipantId: teamA.leader.id,
-      lines: [{ fromTeamId: teamA.team.id, materialTypeId: null, quantity: 100000 }],
+      lines: [
+        { fromTeamId: teamA.team.id, materialTypeId: null, quantity: 100000 },
+        { fromTeamId: teamB.team.id, materialTypeId: null, quantity: 10 },
+      ],
     });
     await engine.acceptTrade({ eventId: event.id, tradeId: trade.id, acceptingParticipantId: teamB.leader.id });
     await engine.registerTrade({ eventId: event.id, tradeId: trade.id, moderatorParticipantId: moderator.id });
@@ -418,6 +442,82 @@ describe("Tokens-for-materials trading", () => {
 
     const [teamBAfter] = await dbModule.db.select().from(schema.teams).where(dbModule.eq(schema.teams.id, teamB.team.id));
     expect(teamBAfter.auctionTokens).toBe(teamBBefore.auctionTokens - 75);
+  });
+});
+
+describe("Rulebook v3: every trade is 1-to-1", () => {
+  it("refuses a trade with more than two lines - no bundling three or more materials into one exchange", async () => {
+    const { event, materials, teamA, teamB } = await createStage2Fixture(dbModule.db);
+    await grantInventory(dbModule.db, event.id, teamA.team.id, materials.bricks.id, 100);
+    await grantInventory(dbModule.db, event.id, teamA.team.id, materials.cement.id, 100);
+
+    await expect(
+      engine.proposeTrade({
+        eventId: event.id,
+        proposerTeamId: teamA.team.id,
+        counterpartyTeamId: teamB.team.id,
+        proposerParticipantId: teamA.leader.id,
+        lines: [
+          { fromTeamId: teamA.team.id, materialTypeId: materials.bricks.id, quantity: 50 },
+          { fromTeamId: teamA.team.id, materialTypeId: materials.cement.id, quantity: 50 },
+          { fromTeamId: teamB.team.id, materialTypeId: null, quantity: 100 },
+        ],
+      }),
+    ).rejects.toMatchObject({ code: "conflict" });
+  });
+
+  it("refuses a single-line trade (no genuine swap, nothing coming back)", async () => {
+    const { event, materials, teamA, teamB } = await createStage2Fixture(dbModule.db);
+    await grantInventory(dbModule.db, event.id, teamA.team.id, materials.bricks.id, 50);
+
+    await expect(
+      engine.proposeTrade({
+        eventId: event.id,
+        proposerTeamId: teamA.team.id,
+        counterpartyTeamId: teamB.team.id,
+        proposerParticipantId: teamA.leader.id,
+        lines: [{ fromTeamId: teamA.team.id, materialTypeId: materials.bricks.id, quantity: 50 }],
+      }),
+    ).rejects.toMatchObject({ code: "conflict" });
+  });
+
+  it("refuses two lines from the same side (not a swap even at exactly two lines)", async () => {
+    const { event, materials, teamA, teamB } = await createStage2Fixture(dbModule.db);
+    await grantInventory(dbModule.db, event.id, teamA.team.id, materials.bricks.id, 100);
+    await grantInventory(dbModule.db, event.id, teamA.team.id, materials.cement.id, 100);
+
+    await expect(
+      engine.proposeTrade({
+        eventId: event.id,
+        proposerTeamId: teamA.team.id,
+        counterpartyTeamId: teamB.team.id,
+        proposerParticipantId: teamA.leader.id,
+        lines: [
+          { fromTeamId: teamA.team.id, materialTypeId: materials.bricks.id, quantity: 50 },
+          { fromTeamId: teamA.team.id, materialTypeId: materials.cement.id, quantity: 50 },
+        ],
+      }),
+    ).rejects.toMatchObject({ code: "conflict" });
+  });
+
+  it("accepts a genuine 1-to-1 swap: one material for one other material", async () => {
+    const { event, materials, moderator, teamA, teamB } = await createStage2Fixture(dbModule.db);
+    await grantInventory(dbModule.db, event.id, teamA.team.id, materials.bricks.id, 200);
+    await grantInventory(dbModule.db, event.id, teamB.team.id, materials.cement.id, 50);
+
+    const trade = await engine.proposeTrade({
+      eventId: event.id,
+      proposerTeamId: teamA.team.id,
+      counterpartyTeamId: teamB.team.id,
+      proposerParticipantId: teamA.leader.id,
+      lines: [
+        { fromTeamId: teamA.team.id, materialTypeId: materials.bricks.id, quantity: 200 },
+        { fromTeamId: teamB.team.id, materialTypeId: materials.cement.id, quantity: 50 },
+      ],
+    });
+    await engine.acceptTrade({ eventId: event.id, tradeId: trade.id, acceptingParticipantId: teamB.leader.id });
+    const registered = await engine.registerTrade({ eventId: event.id, tradeId: trade.id, moderatorParticipantId: moderator.id });
+    expect(registered.status).toBe("registered");
   });
 });
 

@@ -224,18 +224,28 @@ async function settleCityAuction(
 
   const [team] = await tx.select().from(teams).where(eq(teams.id, params.winningBid.teamId)).for("update");
   if (!team) throw new GameError("not_found", "Winning team not found.");
-  if (team.status !== "active") {
-    // Same contingency as auction-service.ts's closeLot: a team that
-    // withdrew/was disqualified mid-auction must never settle a city it
-    // was leading on when the auction closed.
+  // Rulebook v3 Contingency #6: "a team wins a city but can't pay" -
+  // void the bid and close the auction unsold (Stage-1-consistent: the
+  // moderator re-offers the city by starting its auction again, the
+  // same recovery path as closeLot's insufficient-funds case; nothing
+  // here forces the harsher outright-disqualification some sources
+  // suggested). team.status !== "active" covers a team that
+  // withdrew/was disqualified mid-auction; the balance check covers a
+  // team whose balance dropped below the bid between placing it and
+  // this settlement (e.g. a moderator adjustment, or a concurrent
+  // spend) - placeCityBid already checks affordability AT BID TIME, but
+  // never re-checks it here, so without this a settlement could
+  // silently drive a team's tokens negative instead of catching it.
+  const canAfford = team.cityWalletTokens >= params.winningBid.cityWalletUsed && team.auctionTokens >= params.winningBid.auctionTokensUsed;
+  if (team.status !== "active" || !canAfford) {
     await tx.update(cityBids).set({ status: "voided" }).where(eq(cityBids.id, params.winningBid.id));
     await tx.update(cityAuctions).set({ status: "closed" }).where(eq(cityAuctions.id, params.auction.id));
     await recordAudit(tx, {
       eventId: params.eventId,
       actorParticipantId: params.actorParticipantId,
-      reason: `Winning team is no longer active (${team.status}).`,
+      reason: team.status !== "active" ? `Winning team is no longer active (${team.status}).` : "Winning team could not cover its bid at settlement.",
       isOverride: true,
-      action: "city_bid.voided_team_inactive",
+      action: team.status !== "active" ? "city_bid.voided_team_inactive" : "city_bid.voided_insufficient_funds",
       entityType: "city_bid",
       entityId: params.winningBid.id,
     });

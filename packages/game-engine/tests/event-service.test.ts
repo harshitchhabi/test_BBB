@@ -180,7 +180,7 @@ describe("forceEventStage (Task 3: admin stage override)", () => {
     // Nobody paid anything — placeBid never deducts tokens, only
     // closeLot does, and this lot never closed.
     const [teamAfter] = await dbModule.db.select().from(schema.teams).where(dbModule.eq(schema.teams.id, team.id));
-    expect(teamAfter.auctionTokens).toBe(1000);
+    expect(teamAfter.auctionTokens).toBe(2500);
 
     // Can't force it to the stage it's already at.
     await expect(
@@ -211,7 +211,7 @@ describe("updateEventSettings", () => {
     expect(updated.customRulesNote).toBe("No trading Solar during the last 5 minutes.");
     // Untouched fields keep their defaults - a partial update, not a
     // full-row replace that would zero out everything else.
-    expect(updated.stage1StartingTokens).toBe(1000);
+    expect(updated.stage1StartingTokens).toBe(2500);
 
     // Rejects an out-of-range / wrong-type value instead of silently
     // coercing it or writing garbage.

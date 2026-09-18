@@ -83,6 +83,21 @@ describe("Split-lot table + team-count scaling", () => {
     expect(nonSplitLots).toHaveLength(2); // one lot per active team
     expect(nonSplitLots.every((l: any) => l.minimumRaise === 25)).toBe(true);
   });
+
+  it("rulebook v3: Wood's lots raise by 25, not 50, since its opening bid (96) is under the 100-token threshold", async () => {
+    const { event, moderator } = await createTestFixture(dbModule.db);
+    const wood = await insertMaterial(event.id, {
+      key: "wood",
+      name: "Wood",
+      defaultLotQuantity: 48,
+      defaultOpeningBid: 96,
+      reservedKitEligible: false,
+    });
+    const round = await engine.startRound({ eventId: event.id, materialTypeId: wood.id, actorParticipantId: moderator.id });
+    const lots = await dbModule.db.select().from(schema.auctionLots).where(dbModule.eq(schema.auctionLots.roundId, round.id));
+    expect(lots.length).toBeGreaterThan(0);
+    expect(lots.every((l: any) => l.openingBid === 96 && l.minimumRaise === 25)).toBe(true);
+  });
 });
 
 describe("Lot Cap", () => {

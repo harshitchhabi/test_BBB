@@ -57,9 +57,14 @@ export default function TradeBuildPage({ params }: { params: Promise<{ eventId: 
   // anywhere model). Resolved to materialTypeId: null before submitting.
   const TOKENS = "__tokens__";
   const [counterpartyTeamId, setCounterpartyTeamId] = useState("");
-  const [tradeLines, setTradeLines] = useState<Array<{ fromMe: boolean; materialTypeId: string; quantity: string }>>([
+  // Rulebook v3: every trade is 1-to-1 - exactly one line from each
+  // side, never a bundle of several materials in one exchange. Always
+  // exactly these two lines; nothing adds or removes a line anymore.
+  const EMPTY_TRADE_LINES: Array<{ fromMe: boolean; materialTypeId: string; quantity: string }> = [
     { fromMe: true, materialTypeId: "", quantity: "" },
-  ]);
+    { fromMe: false, materialTypeId: "", quantity: "" },
+  ];
+  const [tradeLines, setTradeLines] = useState(EMPTY_TRADE_LINES);
 
   const refresh = useCallback(async () => {
     try {
@@ -155,8 +160,8 @@ export default function TradeBuildPage({ params }: { params: Promise<{ eventId: 
       setMessage("Choose who to trade with, or post an open offer, before proposing a trade.");
       return;
     }
-    if (completeLines.length === 0) {
-      setMessage("Add at least one complete line (material + a positive whole-number quantity, no more than your team currently holds for anything you're giving) before proposing a trade.");
+    if (completeLines.length !== 2) {
+      setMessage("Every trade is 1-to-1 — fill in exactly one complete line on each side (material or tokens + a positive whole-number quantity, no more than your team currently holds for anything you're giving) before proposing a trade.");
       return;
     }
     busyRef.current = true;
@@ -175,7 +180,7 @@ export default function TradeBuildPage({ params }: { params: Promise<{ eventId: 
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) setMessage(body.message ?? `Something went wrong (${res.status}). Please try again.`);
-      else setTradeLines([{ fromMe: true, materialTypeId: "", quantity: "" }]);
+      else setTradeLines(EMPTY_TRADE_LINES);
       // Refresh either way - a rejected proposal can mean the trade
       // limit or counterparty state changed since this screen last
       // loaded.
@@ -356,14 +361,9 @@ export default function TradeBuildPage({ params }: { params: Promise<{ eventId: 
                 const held = heldFor(line);
                 return (
                   <div key={i} className="flex gap-1 mt-2 items-center">
-                    <select
-                      value={line.fromMe ? "me" : "them"}
-                      onChange={(e) => setTradeLines((ls) => ls.map((l, j) => (j === i ? { ...l, fromMe: e.target.value === "me" } : l)))}
-                      className="rounded px-1 text-black text-sm"
-                    >
-                      <option value="me">I give</option>
-                      <option value="them">{isOpenOfferSelected ? "Whoever accepts gives" : "They give"}</option>
-                    </select>
+                    <span className="rounded px-1 text-black text-sm bg-white/90 min-w-24 text-center">
+                      {line.fromMe ? "I give" : isOpenOfferSelected ? "Whoever accepts gives" : "They give"}
+                    </span>
                     <select
                       value={line.materialTypeId}
                       onChange={(e) => setTradeLines((ls) => ls.map((l, j) => (j === i ? { ...l, materialTypeId: e.target.value } : l)))}
@@ -384,31 +384,22 @@ export default function TradeBuildPage({ params }: { params: Promise<{ eventId: 
                       value={line.quantity}
                       onChange={(e) => setTradeLines((ls) => ls.map((l, j) => (j === i ? { ...l, quantity: e.target.value } : l)))}
                     />
-                    {tradeLines.length > 1 && (
-                      <WoodButton
-                        variant="danger"
-                        className="px-2 py-1 text-xs"
-                        onClick={() => setTradeLines((ls) => ls.filter((_, j) => j !== i))}
-                      >
-                        Remove
-                      </WoodButton>
-                    )}
                   </div>
                 );
               })}
+              <p className="text-white/50 text-xs mt-2">Every trade is 1-to-1 — one material or token type for one other.</p>
               <div className="flex gap-2 mt-3">
-                <WoodButton onClick={() => setTradeLines((ls) => [...ls, { fromMe: true, materialTypeId: "", quantity: "" }])}>+ line</WoodButton>
-                <WoodButton variant="primary" onClick={submitTrade} disabled={busy || !counterpartyTeamId || completeLines.length === 0}>
+                <WoodButton variant="primary" onClick={submitTrade} disabled={busy || !counterpartyTeamId || completeLines.length !== 2}>
                   Propose trade
                 </WoodButton>
               </div>
               {hasIncompleteLine && !hasOverQuantityLine && (
-                <p className="text-yellow-300 text-xs mt-2">One or more lines are incomplete and won't be included - pick a material and a quantity for each line you want to submit.</p>
+                <p className="text-yellow-300 text-xs mt-2">Both lines need a material (or tokens) and a quantity before you can propose this trade.</p>
               )}
               {hasOverQuantityLine && (
                 <p className="text-orange-300 text-xs mt-2 font-semibold">
-                  One of your &quot;I give&quot; lines asks for more than your team currently holds - lower the quantity to at
-                  most what you have, or that line won&apos;t be included.
+                  Your &quot;I give&quot; line asks for more than your team currently holds - lower the quantity to at most
+                  what you have.
                 </p>
               )}
             </div>

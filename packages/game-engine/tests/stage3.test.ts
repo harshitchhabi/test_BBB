@@ -82,6 +82,28 @@ describe("City auction", () => {
       engine.assignLastCity({ eventId: event.id, cityId: cities.townCity.id, teamId: teamA.team.id, actorParticipantId: moderator.id }),
     ).rejects.toMatchObject({ code: "conflict" });
   });
+
+  it("rulebook v3 Contingency #6: voids a winning city bid instead of going negative if the team can no longer cover it by settlement", async () => {
+    const { event, moderator, cities, teamA } = await createStage3Fixture(dbModule.db);
+    const auction = await engine.startCityAuction({ eventId: event.id, cityId: cities.metroCity.id, actorParticipantId: moderator.id });
+    // teamA affords 400 at bid time (cityWalletTokens=500), but a
+    // moderator override drains its wallet before the auction closes -
+    // e.g. a manual correction made in the moments between the bid and
+    // the close. Settlement must catch this instead of driving the
+    // team's balance negative.
+    await engine.placeCityBid({ eventId: event.id, cityAuctionId: auction.id, teamId: teamA.team.id, actingParticipantId: teamA.leader.id, amount: 400 });
+    await dbModule.db.update(schema.teams).set({ cityWalletTokens: 50 }).where(dbModule.eq(schema.teams.id, teamA.team.id));
+
+    const result = await engine.closeCityAuction({ eventId: event.id, cityAuctionId: auction.id, actorParticipantId: moderator.id });
+    expect(result.winnerTeamId).toBeNull();
+
+    const [teamAAfter] = await dbModule.db.select().from(schema.teams).where(dbModule.eq(schema.teams.id, teamA.team.id));
+    expect(teamAAfter.cityWalletTokens).toBe(50); // untouched, not driven negative
+    expect(teamAAfter.auctionTokens).toBe(200); // untouched
+
+    const [cityAfter] = await dbModule.db.select().from(schema.cities).where(dbModule.eq(schema.cities.id, cities.metroCity.id));
+    expect(cityAfter.assignedTeamId).toBeNull(); // still available - a moderator can start its auction again
+  });
 });
 
 describe("Scout reports", () => {
