@@ -22,6 +22,7 @@ export default function ModeratorTeamsPage({ params }: { params: Promise<{ event
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [adjustAmount, setAdjustAmount] = useState<Record<string, string>>({});
+  const [adjustWalletAmount, setAdjustWalletAmount] = useState<Record<string, string>>({});
   const [loadError, setLoadError] = useState<string | null>(null);
   const [materials, setMaterials] = useState<Array<{ materialTypeId: string; materialName: string }>>([]);
   const [expandedInventoryTeamId, setExpandedInventoryTeamId] = useState<string | null>(null);
@@ -113,7 +114,7 @@ export default function ModeratorTeamsPage({ params }: { params: Promise<{ event
     }
   }
 
-  async function call(path: string, body?: unknown, method: "POST" | "DELETE" = "POST") {
+  async function call(path: string, body?: unknown, method: "POST" | "DELETE" = "POST", onSuccess?: () => void) {
     if (busyRef.current) return;
     busyRef.current = true;
     setBusy(true);
@@ -122,6 +123,7 @@ export default function ModeratorTeamsPage({ params }: { params: Promise<{ event
       const res = await fetch(path, { method, headers: { "content-type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) setMessage(json.message ?? `Error (${res.status})`);
+      else onSuccess?.();
       // Refresh either way - see the same fix on the Trade Desk console.
       await refresh();
     } finally {
@@ -244,13 +246,33 @@ export default function ModeratorTeamsPage({ params }: { params: Promise<{ event
                 <div className="flex gap-2 items-center flex-wrap">
                   <input
                     className="w-20 px-2 py-1 rounded text-black text-sm"
-                    placeholder="±tokens"
+                    placeholder="±Stage 1 tokens"
                     value={adjustAmount[t.id] ?? ""}
                     onChange={(e) => setAdjustAmount((a) => ({ ...a, [t.id]: e.target.value }))}
                   />
                   <WoodButton
                     disabled={busy || !adjustAmount[t.id]}
-                    onClick={() => call(`/api/events/${eventId}/teams/${t.id}/adjust-tokens`, { auctionTokensDelta: Number(adjustAmount[t.id]), reason: "Manual correction." })}
+                    onClick={() =>
+                      call(`/api/events/${eventId}/teams/${t.id}/adjust-tokens`, { auctionTokensDelta: Number(adjustAmount[t.id]), reason: "Manual correction." }, "POST", () =>
+                        setAdjustAmount((a) => ({ ...a, [t.id]: "" })),
+                      )
+                    }
+                  >
+                    Apply
+                  </WoodButton>
+                  <input
+                    className="w-20 px-2 py-1 rounded text-black text-sm"
+                    placeholder="±city wallet"
+                    value={adjustWalletAmount[t.id] ?? ""}
+                    onChange={(e) => setAdjustWalletAmount((a) => ({ ...a, [t.id]: e.target.value }))}
+                  />
+                  <WoodButton
+                    disabled={busy || !adjustWalletAmount[t.id]}
+                    onClick={() =>
+                      call(`/api/events/${eventId}/teams/${t.id}/adjust-tokens`, { cityWalletTokensDelta: Number(adjustWalletAmount[t.id]), reason: "Manual correction." }, "POST", () =>
+                        setAdjustWalletAmount((a) => ({ ...a, [t.id]: "" })),
+                      )
+                    }
                   >
                     Apply
                   </WoodButton>
