@@ -65,21 +65,27 @@ export default function TradeBuildPage({ params }: { params: Promise<{ eventId: 
     { fromMe: false, materialTypeId: "", quantity: "" },
   ];
   const [tradeLines, setTradeLines] = useState(EMPTY_TRADE_LINES);
+  // A login is tied to exactly one team for its whole session, so once
+  // known this never changes — caching it here lets every refresh AFTER
+  // the first fetch this team's inventory in the same parallel batch as
+  // everything else, instead of only finding out the team id once the
+  // overview call resolves and THEN making a second, sequential request
+  // for it. That sequential round-trip ran on every single WebSocket-
+  // triggered refresh (any team's bid, trade, or build) - a real,
+  // avoidable source of lag on the busiest screen in Stage 2.
+  const myTeamIdRef = useRef<string | null>(null);
 
   const refresh = useCallback(async () => {
     try {
-      // These four don't depend on each other — firing them together
-      // instead of one-at-a-time cuts this screen's refresh time to
-      // roughly its slowest single request instead of the sum of all
-      // four, which matters a lot given this refresh reruns on every
-      // WebSocket broadcast (any team's bid, trade, or build).
-      const [ov, materials, rec, tr, ti, ab] = await Promise.all([
+      const knownTeamId = myTeamIdRef.current;
+      const [ov, materials, rec, tr, ti, ab, inv] = await Promise.all([
         fetchEventOverviewFresh(eventId) as Promise<any>,
         fetchJson<any>(`/api/events/${eventId}/bank-stock`),
         fetchJson<any>(`/api/events/${eventId}/recipes`),
         fetchJson<any>(`/api/events/${eventId}/trades/list`),
         fetchJson<any>(`/api/events/${eventId}/teams-inventory`),
         fetchJson<any>(`/api/events/${eventId}/buildings/list`),
+        knownTeamId ? fetchJson<any>(`/api/events/${eventId}/teams/${knownTeamId}/inventory`) : Promise.resolve(null),
       ]);
       setOverview(ov);
       setBankStock(materials.stock);
@@ -88,8 +94,12 @@ export default function TradeBuildPage({ params }: { params: Promise<{ eventId: 
       setTeamsInventory(ti.teams);
       setAllBuildings(ab.buildings);
       if (ov.myTeam) {
-        const inv = await fetchJson<any>(`/api/events/${eventId}/teams/${ov.myTeam.id}/inventory`);
-        setInventory(inv.inventory);
+        myTeamIdRef.current = ov.myTeam.id;
+        // First load (team id wasn't known yet when the batch above was
+        // built): fall back to the one-time sequential fetch. Every
+        // refresh after this one already got it in parallel.
+        const resolvedInv = inv ?? (await fetchJson<any>(`/api/events/${eventId}/teams/${ov.myTeam.id}/inventory`));
+        setInventory(resolvedInv.inventory);
         setMyBuildings(ab.buildings.filter((b: any) => b.teamId === ov.myTeam.id));
       }
       setLoadError(null);

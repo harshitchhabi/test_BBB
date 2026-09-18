@@ -23,6 +23,7 @@ import { recordAudit } from "./audit";
 import { runInTransaction } from "./tx";
 import { assertStaffTx } from "./team-service";
 import { generatePassword, hashPassword } from "./auth-service";
+import { sweepUnopenedLotsToBank } from "./auction-service";
 
 // This was a real gap, not a deliberate omission: nothing anywhere in
 // Phases 1-5 ever wrote to `events.status` except revealCitiesAndScore
@@ -88,6 +89,21 @@ export async function setEventStatus(params: {
       .where(and(eq(auctionLots.eventId, params.eventId), eq(auctionLots.status, "live")));
     if (liveLot) {
       throw new GameError("conflict", "Close the currently live auction lot before advancing the event's stage.");
+    }
+
+    // Once the event is landing on a stage where Stage 1's auction is
+    // definitely over (not just paused - a pause can still resume back
+    // into Stage 1 with everything intact), any lot that was never even
+    // opened for bidding goes to bank stock instead of vanishing from
+    // the game — see auction-service.ts's sweepUnopenedLotsToBank.
+    // Keyed off the TARGET stage rather than "coming from stage_1",
+    // since a pause-then-resume-elsewhere path can reach stage_2
+    // without event.status itself ever reading "stage_1" at this exact
+    // moment; sweeping is idempotent (only ever touches lots still
+    // "pending", which can't exist unless Stage 1 ran at some point),
+    // so doing it on every landing here is always safe.
+    if (["stage_2", "stage_3", "scoring", "completed"].includes(params.status)) {
+      await sweepUnopenedLotsToBank(tx, params.eventId);
     }
 
     const updates: Partial<typeof events.$inferInsert> = { status: params.status as (typeof events.$inferSelect)["status"] };
@@ -159,21 +175,32 @@ export async function forceEventStage(params: {
     let voidedLotId: string | null = null;
     let voidedCityAuctionId: string | null = null;
 
-    if (event.activeRoundId) {
-      const [liveLot] = await tx
-        .select()
-        .from(auctionLots)
-        .where(and(eq(auctionLots.roundId, event.activeRoundId), eq(auctionLots.status, "live")))
-        .for("update");
-      if (liveLot) {
-        await tx.update(auctionLots).set({ status: "voided" }).where(eq(auctionLots.id, liveLot.id));
-        await tx.update(materialLots).set({ status: "bank_stock" }).where(eq(materialLots.id, liveLot.materialLotId));
-        voidedLotId = liveLot.id;
-      }
-      await tx
-        .update(auctionRounds)
-        .set({ status: "cancelled" })
-        .where(and(eq(auctionRounds.id, event.activeRoundId), eq(auctionRounds.status, "active")));
+    // Event-wide, not just event.activeRoundId's round — with rulebook
+    // v3's multi-round pause/resume, several rounds can be "active" at
+    // once (only one ever has a live lot), and every one of them needs
+    // cleaning up when force-jumping away, not just whichever happened
+    // to be live.
+    const [liveLot] = await tx
+      .select()
+      .from(auctionLots)
+      .where(and(eq(auctionLots.eventId, params.eventId), eq(auctionLots.status, "live")))
+      .for("update");
+    if (liveLot) {
+      await tx.update(auctionLots).set({ status: "voided" }).where(eq(auctionLots.id, liveLot.id));
+      await tx.update(materialLots).set({ status: "bank_stock" }).where(eq(materialLots.id, liveLot.materialLotId));
+      voidedLotId = liveLot.id;
+    }
+    await tx
+      .update(auctionRounds)
+      .set({ status: "cancelled" })
+      .where(and(eq(auctionRounds.eventId, params.eventId), eq(auctionRounds.status, "active")));
+
+    // Same reasoning as setEventStatus: any lot that was never even
+    // opened for bidding goes to bank stock instead of vanishing, once
+    // the event is landing somewhere Stage 1's auction is definitely
+    // over.
+    if (["stage_2", "stage_3", "scoring", "completed"].includes(params.status)) {
+      await sweepUnopenedLotsToBank(tx, params.eventId);
     }
 
     if (event.activeCityAuctionId) {

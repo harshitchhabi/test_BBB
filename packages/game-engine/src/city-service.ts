@@ -398,6 +398,80 @@ export async function assignLastCity(params: { eventId: string; cityId: string; 
   });
 }
 
+// Lets a moderator directly sell a specific city to a specific team at a
+// specific price — for handling an in-person/paper bid, correcting a
+// mistake, or any other situation where running a live timed auction
+// through this app isn't how that city actually got decided. Not
+// restricted to the "last team, last city" case assignLastCity covers,
+// and not fixed to the city's opening bid either — the moderator sets
+// the amount, same as a real winning bid would have. The one rule that
+// still can't be overridden: the team must actually be able to afford
+// it (city wallet + leftover Stage 1 tokens), same affordability check
+// placeCityBid enforces on a live bid.
+export async function sellCityToTeam(params: {
+  eventId: string;
+  cityId: string;
+  teamId: string;
+  amount: number;
+  actorParticipantId: string;
+  reason?: string;
+}) {
+  return runInTransaction(async (tx, queueBroadcast) => {
+    await assertStage3(tx, params.eventId);
+    await assertStaffTx(tx, params.eventId, params.actorParticipantId);
+
+    if (!Number.isInteger(params.amount) || params.amount < 0) {
+      throw new GameError("invalid_input", "Sale amount must be a non-negative whole number.");
+    }
+
+    const [city] = await tx.select().from(cities).where(eq(cities.id, params.cityId)).for("update");
+    if (!city || city.eventId !== params.eventId) throw new GameError("not_found", "City not found.");
+    if (city.assignedTeamId) throw new GameError("conflict", "This city has already been assigned.");
+
+    const [team] = await tx.select().from(teams).where(eq(teams.id, params.teamId)).for("update");
+    if (!team || team.eventId !== params.eventId) throw new GameError("not_found", "Team not found.");
+    if (team.status !== "active") throw new GameError("forbidden", "This team is not active.");
+    await assertTeamHasNoCity(tx, params.eventId, team.id);
+
+    const biddingPower = team.cityWalletTokens + team.auctionTokens;
+    if (params.amount > biddingPower) {
+      throw new GameError("insufficient_tokens", `This team's bidding power (city wallet + leftover tokens) is only ${biddingPower}, less than the ${params.amount} sale price.`);
+    }
+
+    const cityWalletUsed = Math.min(params.amount, team.cityWalletTokens);
+    const auctionTokensUsed = params.amount - cityWalletUsed;
+
+    const [auction] = await tx
+      .insert(cityAuctions)
+      .values({ eventId: params.eventId, cityId: city.id, status: "closed", openingBid: city.openingBid, minimumRaise: 0, opensAt: new Date(), closesAt: new Date() })
+      .returning();
+    const [winningBid] = await tx
+      .insert(cityBids)
+      .values({ cityAuctionId: auction.id, teamId: team.id, amount: params.amount, cityWalletUsed, auctionTokensUsed, status: "winning" })
+      .returning();
+
+    await recordAudit(tx, {
+      eventId: params.eventId,
+      actorParticipantId: params.actorParticipantId,
+      reason: params.reason,
+      isOverride: true,
+      action: "city.manual_sale",
+      entityType: "city",
+      entityId: city.id,
+      afterJson: { teamId: team.id, amount: params.amount },
+    });
+
+    const result = await settleCityAuction(tx, {
+      eventId: params.eventId,
+      auction: { ...auction, winnerTeamId: null, winningBidId: null },
+      winningBid,
+      actorParticipantId: params.actorParticipantId,
+    });
+    queueBroadcast({ eventId: params.eventId, type: "city.assigned", data: result });
+    return result;
+  });
+}
+
 // Mirrors auction-service.ts's closeExpiredLots — same reasoning: nothing
 // client-side is trusted to decide a city auction's timer expired, and
 // backend/'s sweep is the one long-running process that can poll it.

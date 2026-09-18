@@ -106,6 +106,42 @@ describe("City auction", () => {
   });
 });
 
+describe("Manual city sale (sellCityToTeam)", () => {
+  it("lets a moderator directly sell a city to a team at any price it can afford, splitting wallet-then-leftover", async () => {
+    const { event, moderator, cities, teamA } = await createStage3Fixture(dbModule.db);
+    // teamA: cityWalletTokens=500, auctionTokens=200 — affords 650 (500 + 150 of the 200 leftover).
+    const result = await engine.sellCityToTeam({ eventId: event.id, cityId: cities.metroCity.id, teamId: teamA.team.id, amount: 650, actorParticipantId: moderator.id, reason: "Sold in person during a connectivity outage." });
+    expect(result.winnerTeamId).toBe(teamA.team.id);
+
+    const [teamAAfter] = await dbModule.db.select().from(schema.teams).where(dbModule.eq(schema.teams.id, teamA.team.id));
+    expect(teamAAfter.cityWalletTokens).toBe(0);
+    expect(teamAAfter.auctionTokens).toBe(50); // 200 - 150
+
+    const [cityAfter] = await dbModule.db.select().from(schema.cities).where(dbModule.eq(schema.cities.id, cities.metroCity.id));
+    expect(cityAfter.assignedTeamId).toBe(teamA.team.id);
+  });
+
+  it("refuses a sale the team can't afford, and one to a team that already has a city", async () => {
+    const { event, moderator, cities, teamA, teamB } = await createStage3Fixture(dbModule.db);
+
+    await expect(
+      engine.sellCityToTeam({ eventId: event.id, cityId: cities.metroCity.id, teamId: teamA.team.id, amount: 10000, actorParticipantId: moderator.id }),
+    ).rejects.toMatchObject({ code: "insufficient_tokens" });
+
+    await engine.sellCityToTeam({ eventId: event.id, cityId: cities.townCity.id, teamId: teamA.team.id, amount: 100, actorParticipantId: moderator.id });
+    await dbModule.db.insert(schema.cities).values({ eventId: event.id, blockNumber: 1, name: "ExtraCity", tier: "town", openingBid: 100, hiddenMultiplier: "1.00" });
+    const [extraCity] = await dbModule.db.select().from(schema.cities).where(dbModule.eq(schema.cities.name, "ExtraCity"));
+    await expect(
+      engine.sellCityToTeam({ eventId: event.id, cityId: extraCity.id, teamId: teamA.team.id, amount: 100, actorParticipantId: moderator.id }),
+    ).rejects.toMatchObject({ code: "already_has_city" });
+
+    // Non-staff is refused.
+    await expect(
+      engine.sellCityToTeam({ eventId: event.id, cityId: extraCity.id, teamId: teamB.team.id, amount: 100, actorParticipantId: teamB.leader.id }),
+    ).rejects.toMatchObject({ code: "forbidden" });
+  });
+});
+
 describe("Scout reports", () => {
   it("gives a clue that is true but never the exact hidden multiplier value in the raw response", async () => {
     const { event, cities, teamA } = await createStage3Fixture(dbModule.db);

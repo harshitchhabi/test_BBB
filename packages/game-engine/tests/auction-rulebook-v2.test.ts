@@ -278,3 +278,36 @@ describe("Multi-round pause/resume", () => {
     expect(reopened.status).toBe("live");
   });
 });
+
+describe("Unopened lots go to bank stock, not nowhere", () => {
+  it("sends every never-opened lot in an abandoned round to bank stock when Stage 1 ends", async () => {
+    const { event, moderator, material, teamA } = await createTestFixture(dbModule.db);
+    const round = await engine.startRound({ eventId: event.id, materialTypeId: material.id, actorParticipantId: moderator.id });
+
+    // Win/close one lot, leave the rest of the round's lots (teamA and
+    // teamB each get one, so 2 total) entirely untouched - never opened.
+    const lot = await engine.openNextLot({ eventId: event.id, roundId: round.id, actorParticipantId: moderator.id });
+    await engine.placeBid({ eventId: event.id, auctionLotId: lot.id, teamId: teamA.team.id, actingParticipantId: teamA.leader.id, amount: lot.openingBid });
+    await engine.closeLot({ eventId: event.id, auctionLotId: lot.id, actorParticipantId: moderator.id });
+
+    const pendingBefore = await dbModule.db.select().from(schema.auctionLots).where(dbModule.and(dbModule.eq(schema.auctionLots.roundId, round.id), dbModule.eq(schema.auctionLots.status, "pending")));
+    expect(pendingBefore.length).toBeGreaterThan(0);
+
+    await engine.setEventStatus({ eventId: event.id, status: "stage_2", actorParticipantId: moderator.id });
+
+    const lotsAfter = await dbModule.db.select().from(schema.auctionLots).where(dbModule.eq(schema.auctionLots.roundId, round.id));
+    expect(lotsAfter.every((l: any) => l.status !== "pending")).toBe(true);
+    expect(lotsAfter.filter((l: any) => l.status === "unsold").length).toBe(pendingBefore.length);
+
+    const bankStockRows = await dbModule.db
+      .select()
+      .from(schema.materialLots)
+      .where(dbModule.and(dbModule.eq(schema.materialLots.materialTypeId, material.id), dbModule.eq(schema.materialLots.status, "bank_stock")));
+    expect(bankStockRows.length).toBe(pendingBefore.length);
+
+    // The round itself is no longer dangling as "active" - it completed
+    // once every one of its lots left pending.
+    const [roundAfter] = await dbModule.db.select().from(schema.auctionRounds).where(dbModule.eq(schema.auctionRounds.id, round.id));
+    expect(roundAfter.status).toBe("completed");
+  });
+});

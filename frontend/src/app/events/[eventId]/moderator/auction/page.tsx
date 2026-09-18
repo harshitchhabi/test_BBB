@@ -43,6 +43,9 @@ export default function ModeratorAuctionPage({ params }: { params: Promise<{ eve
   // the Live Auction screen's countdown.
   useEffect(() => {
     if (!state?.liveLot?.closesAt) return;
+    // Fires immediately, not just on the first 1s tick - see the
+    // identical fix on the team-facing Live Auction screen.
+    setNow(Date.now());
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
   }, [state?.liveLot?.id, state?.liveLot?.closesAt]);

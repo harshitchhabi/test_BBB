@@ -24,16 +24,28 @@ export default function InventoryPage({ params }: { params: Promise<{ eventId: s
   const [buyBusy, setBuyBusy] = useState(false);
   const [buyMessage, setBuyMessage] = useState<{ text: string; ok: boolean } | null>(null);
 
+  // See the identical fix on Trade & Build's refresh(): a login is tied
+  // to exactly one team all session, so once known it never changes -
+  // caching it here lets the team's own inventory fetch join the same
+  // parallel batch as everything else on every refresh after the first,
+  // instead of always waiting on the overview call to finish first.
+  const myTeamIdRef = useRef<string | null>(null);
+
   const refresh = useCallback(async () => {
     try {
-      const ov = (await fetchEventOverviewFresh(eventId)) as any;
+      const knownTeamId = myTeamIdRef.current;
+      const [ov, bank, inv] = await Promise.all([
+        fetchEventOverviewFresh(eventId) as Promise<any>,
+        fetchJson<any>(`/api/events/${eventId}/bank-stock`),
+        knownTeamId ? fetchJson<any>(`/api/events/${eventId}/teams/${knownTeamId}/inventory`) : Promise.resolve(null),
+      ]);
       setOverview(ov);
-      if (ov.myTeam) {
-        const inv = await fetchJson<any>(`/api/events/${eventId}/teams/${ov.myTeam.id}/inventory`);
-        setInventory(inv.inventory);
-      }
-      const bank = await fetchJson<any>(`/api/events/${eventId}/bank-stock`);
       setBankStock(bank.stock);
+      if (ov.myTeam) {
+        myTeamIdRef.current = ov.myTeam.id;
+        const resolvedInv = inv ?? (await fetchJson<any>(`/api/events/${eventId}/teams/${ov.myTeam.id}/inventory`));
+        setInventory(resolvedInv.inventory);
+      }
       setLoadError(null);
     } catch (err) {
       setLoadError(err instanceof FetchJsonError ? err.message : "Couldn't load this page. Retrying…");

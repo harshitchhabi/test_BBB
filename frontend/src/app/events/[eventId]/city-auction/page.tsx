@@ -66,6 +66,9 @@ export default function CityAuctionPage({ params }: { params: Promise<{ eventId:
   const liveAuctionId = auctions.find((a) => a.status === "live")?.id;
   useEffect(() => {
     if (!liveAuctionId) return;
+    // Fires immediately, not just on the first 1s tick - see the
+    // identical fix on the Stage 1 auction screens.
+    setNow(Date.now());
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
   }, [liveAuctionId]);
@@ -164,9 +167,13 @@ export default function CityAuctionPage({ params }: { params: Promise<{ eventId:
       {message && <p className="text-red-100 bg-red-950/80 px-3 py-2 rounded-md font-medium mb-3">{message}</p>}
 
       {overview.myTeam && (
-        <div className="grid grid-cols-3 gap-3 w-full max-w-lg mb-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 w-full max-w-2xl mb-4">
           <StatTile label="Wallet" value={overview.myTeam.cityWalletTokens} />
-          <StatTile label="Leftover" value={overview.myTeam.auctionTokens} />
+          <StatTile label="Leftover (Stage 1)" value={overview.myTeam.auctionTokens} />
+          {/* Every bid is capped by wallet + leftover COMBINED, not either
+              pool alone (rulebook: "Bidding power = wallet + leftovers") -
+              shown as its own number so it's never left implicit. */}
+          <StatTile label="Total bidding power" value={overview.myTeam.cityWalletTokens + overview.myTeam.auctionTokens} />
           <StatTile label="Your city" value={myCity ? myCity.name : "-"} />
         </div>
       )}

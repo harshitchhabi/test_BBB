@@ -99,6 +99,39 @@ async function completeRoundIfFinished(tx: Tx, eventId: string, roundId: string)
     .where(and(eq(events.id, eventId), eq(events.activeRoundId, roundId)));
 }
 
+// A lot that was actually put up for bidding and drew no bids already
+// goes to bank stock (closeLot's unsold path). But a lot that was never
+// even OPENED — left "pending" because a round was paused and abandoned,
+// or the moderator moved on to Stage 2 with some materials never
+// auctioned — used to just sit there forever, its material effectively
+// removed from the game (never sellable, never buildable). That's a real
+// gap: every unit of every material that was ever going to exist should
+// end up somewhere a team can get it from, not vanish. Called whenever
+// the event leaves Stage 1 for good (setEventStatus/forceEventStage),
+// this sends every still-pending lot in the event straight to bank
+// stock, exactly as if it had gone up for auction and drawn no bids, and
+// completes any round that was left dangling as a result.
+export async function sweepUnopenedLotsToBank(tx: Tx, eventId: string): Promise<{ sweptLotIds: string[] }> {
+  const abandonedLots = await tx
+    .select()
+    .from(auctionLots)
+    .where(and(eq(auctionLots.eventId, eventId), eq(auctionLots.status, "pending")))
+    .for("update");
+  if (abandonedLots.length === 0) return { sweptLotIds: [] };
+
+  for (const lot of abandonedLots) {
+    await tx.update(materialLots).set({ status: "bank_stock" }).where(eq(materialLots.id, lot.materialLotId));
+    await tx.update(auctionLots).set({ status: "unsold" }).where(eq(auctionLots.id, lot.id));
+  }
+
+  const roundIds = [...new Set(abandonedLots.map((l) => l.roundId))];
+  for (const roundId of roundIds) {
+    await completeRoundIfFinished(tx, eventId, roundId);
+  }
+
+  return { sweptLotIds: abandonedLots.map((l) => l.id) };
+}
+
 // Instantiates one auction lot per active team for a material round —
 // rulebook: "For each team in the room, the moderator adds one of each lot
 // below." Each lot gets its own material_lot (the finite, real unit being

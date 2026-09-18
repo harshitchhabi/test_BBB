@@ -36,6 +36,12 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ eventId:
   // just tick every second while a lot is live.
   useEffect(() => {
     if (!state?.liveLot) return;
+    // Fires immediately, not just on the first 1s tick — without this, a
+    // new lot going live showed a stale countdown (computed against
+    // whatever `now` happened to be from before this lot existed) for up
+    // to a full second before the interval's first callback corrected
+    // it, which read as the timer visibly lagging when it started.
+    setNow(Date.now());
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
   }, [state?.liveLot?.id, state?.liveLot?.closesAt]);

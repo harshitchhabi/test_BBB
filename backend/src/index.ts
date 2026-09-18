@@ -36,7 +36,12 @@ function secretsMatch(provided: string | string[] | undefined, expected: string)
   const b = Buffer.from(expected);
   return a.length === b.length && timingSafeEqual(a, b);
 }
-const TIMER_SWEEP_INTERVAL_MS = Number(process.env.TIMER_SWEEP_INTERVAL_MS ?? 2000);
+// A live-looking lot that's actually already timed out but not yet
+// closed (nothing left to do but wait for this sweep) is a real,
+// visible source of perceived "lag" right when a timer hits zero -
+// tightened from 2000ms since the query this runs (WHERE status='live'
+// AND closes_at < now()) is cheap even at real event scale.
+const TIMER_SWEEP_INTERVAL_MS = Number(process.env.TIMER_SWEEP_INTERVAL_MS ?? 1000);
 const ENABLE_TIMER_SWEEP = process.env.ENABLE_TIMER_SWEEP !== "false";
 
 if (!INTERNAL_BROADCAST_SECRET) {

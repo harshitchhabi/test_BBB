@@ -27,6 +27,13 @@ export default function ModeratorCitiesPage({ params }: { params: Promise<{ even
   const [loadError, setLoadError] = useState<string | null>(null);
   const [confirmState, setConfirmState] = useState<ConfirmDialogState | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  // Manual sale: a moderator directly selling a city to a chosen team at
+  // a chosen price (an in-person bid, a correction, or any other case
+  // where a live timed auction through this app isn't how it was
+  // actually decided) - only one city's picker open at a time.
+  const [manualSaleCityId, setManualSaleCityId] = useState<string | null>(null);
+  const [manualSaleTeamId, setManualSaleTeamId] = useState("");
+  const [manualSaleAmount, setManualSaleAmount] = useState("");
 
   // Same reasoning as the Stage 1 moderator console's timer: deciding
   // when to step in and close a city auction manually previously meant
@@ -34,6 +41,9 @@ export default function ModeratorCitiesPage({ params }: { params: Promise<{ even
   const anyLive = auctions.some((a) => a.status === "live" && a.closesAt);
   useEffect(() => {
     if (!anyLive) return;
+    // Fires immediately, not just on the first 1s tick - see the
+    // identical fix on the Stage 1 auction screens.
+    setNow(Date.now());
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
   }, [anyLive]);
@@ -89,6 +99,29 @@ export default function ModeratorCitiesPage({ params }: { params: Promise<{ even
 
   if (loadError && !overview) return <PageFrame><ModNav eventId={eventId} /><p className="text-red-100 bg-red-950/80 px-3 py-2 rounded-md font-medium text-center mt-8">{loadError}</p></PageFrame>;
   if (!overview) return <PageFrame><p className="text-[#F1EBB5]">Loading…</p></PageFrame>;
+
+  async function sellManually(cityId: string) {
+    if (busy || !manualSaleTeamId || !manualSaleAmount) return;
+    setBusy(true);
+    setMessage(null);
+    try {
+      const res = await fetch(`/api/events/${eventId}/cities/${cityId}/sell`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ teamId: manualSaleTeamId, amount: Number(manualSaleAmount), reason: "Manual sale by moderator." }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) setMessage(json.message ?? `Error (${res.status})`);
+      else {
+        setManualSaleCityId(null);
+        setManualSaleTeamId("");
+        setManualSaleAmount("");
+      }
+      await refresh();
+    } finally {
+      setBusy(false);
+    }
+  }
 
   function revealAndFinalize() {
     setConfirmState({
@@ -159,31 +192,72 @@ export default function ModeratorCitiesPage({ params }: { params: Promise<{ even
           {cities.map((c) => {
             const live = liveAuctionByCity.get(c.id);
             return (
-              <div key={c.id} className="bg-[#764A21]/40 rounded-lg p-3 flex justify-between items-center text-white flex-wrap gap-2">
-                <span>
-                  {c.name} ({c.tier}) - {c.assignedTeamId ? `sold to ${overview.teams.find((t: any) => t.id === c.assignedTeamId)?.name}` : live ? "live" : "unsold"}
-                  {live?.closesAt && (() => {
-                    const secondsLeft = Math.max(0, Math.round((new Date(live.closesAt).getTime() - now) / 1000));
-                    return (
-                      <span className={`ml-2 font-bold ${secondsLeft <= 10 ? "text-red-400" : "text-yellow-300"}`}>
-                        ({Math.floor(secondsLeft / 60)}:{(secondsLeft % 60).toString().padStart(2, "0")})
-                      </span>
-                    );
-                  })()}
-                </span>
-                <div className="flex gap-2">
-                  {!c.assignedTeamId && !live && (
-                    <WoodButton variant="primary" disabled={busy} onClick={() => call(`/api/events/${eventId}/cities/${c.id}/start-auction`)}>Start auction</WoodButton>
-                  )}
-                  {live && (
-                    <WoodButton variant="danger" disabled={busy} onClick={() => call(`/api/events/${eventId}/city-auctions/${live.id}/close`)}>Close</WoodButton>
-                  )}
-                  {!c.assignedTeamId && !live && teamsWithoutCity.length === 1 && (
-                    <WoodButton disabled={busy} onClick={() => call(`/api/events/${eventId}/cities/${c.id}/assign-last`, { teamId: teamsWithoutCity[0].id })}>
-                      Assign to {teamsWithoutCity[0].name} (last team)
-                    </WoodButton>
-                  )}
+              <div key={c.id} className="bg-[#764A21]/40 rounded-lg p-3 text-white">
+                <div className="flex justify-between items-center flex-wrap gap-2">
+                  <span>
+                    {c.name} ({c.tier}) - {c.assignedTeamId ? `sold to ${overview.teams.find((t: any) => t.id === c.assignedTeamId)?.name}` : live ? "live" : "unsold"}
+                    {live?.closesAt && (() => {
+                      const secondsLeft = Math.max(0, Math.round((new Date(live.closesAt).getTime() - now) / 1000));
+                      return (
+                        <span className={`ml-2 font-bold ${secondsLeft <= 10 ? "text-red-400" : "text-yellow-300"}`}>
+                          ({Math.floor(secondsLeft / 60)}:{(secondsLeft % 60).toString().padStart(2, "0")})
+                        </span>
+                      );
+                    })()}
+                  </span>
+                  <div className="flex gap-2">
+                    {!c.assignedTeamId && !live && (
+                      <WoodButton variant="primary" disabled={busy} onClick={() => call(`/api/events/${eventId}/cities/${c.id}/start-auction`)}>Start auction</WoodButton>
+                    )}
+                    {live && (
+                      <WoodButton variant="danger" disabled={busy} onClick={() => call(`/api/events/${eventId}/city-auctions/${live.id}/close`)}>Close</WoodButton>
+                    )}
+                    {!c.assignedTeamId && !live && teamsWithoutCity.length === 1 && (
+                      <WoodButton disabled={busy} onClick={() => call(`/api/events/${eventId}/cities/${c.id}/assign-last`, { teamId: teamsWithoutCity[0].id })}>
+                        Assign to {teamsWithoutCity[0].name} (last team)
+                      </WoodButton>
+                    )}
+                    {!c.assignedTeamId && !live && (
+                      <WoodButton
+                        onClick={() => {
+                          setManualSaleCityId(manualSaleCityId === c.id ? null : c.id);
+                          setManualSaleTeamId("");
+                          setManualSaleAmount("");
+                        }}
+                      >
+                        {manualSaleCityId === c.id ? "Cancel" : "Sell manually"}
+                      </WoodButton>
+                    )}
+                  </div>
                 </div>
+
+                {manualSaleCityId === c.id && (
+                  <div className="mt-3 bg-black/30 rounded p-3 flex gap-2 flex-wrap items-center">
+                    <select value={manualSaleTeamId} onChange={(e) => setManualSaleTeamId(e.target.value)} className="px-2 py-1 rounded text-black text-sm">
+                      <option value="">Team…</option>
+                      {teamsWithoutCity.map((t: any) => {
+                        const power = (t.cityWalletTokens ?? 0) + (t.auctionTokens ?? 0);
+                        return (
+                          <option key={t.id} value={t.id}>{t.name} (affords up to {power})</option>
+                        );
+                      })}
+                    </select>
+                    <input
+                      type="number"
+                      min={0}
+                      value={manualSaleAmount}
+                      onChange={(e) => setManualSaleAmount(e.target.value)}
+                      placeholder="Sale price"
+                      className="w-28 px-2 py-1 rounded text-black text-sm"
+                    />
+                    <WoodButton variant="primary" disabled={busy || !manualSaleTeamId || !manualSaleAmount} onClick={() => sellManually(c.id)}>
+                      Confirm sale
+                    </WoodButton>
+                    <p className="text-white/60 text-xs w-full">
+                      Only valid if the team's city wallet + leftover Stage 1 tokens cover the price — same rule a live bid follows.
+                    </p>
+                  </div>
+                )}
               </div>
             );
           })}
