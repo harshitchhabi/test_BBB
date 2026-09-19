@@ -95,11 +95,7 @@ export default function PortfolioPage({ params }: { params: Promise<{ eventId: s
             <StatTile label="Leftover" value={standing.leftoverPoints} />
           </div>
           <p className="text-center text-white mb-2">City multiplier: ×{standing.cityMultiplier}</p>
-          <p className="text-center text-yellow-300 font-bold">Rank #{standing.rank} (placement #{standing.tiebreakerRank})</p>
-          <details className="mt-3 text-white/80 text-sm">
-            <summary className="cursor-pointer">Full calculation</summary>
-            <pre className="whitespace-pre-wrap">{JSON.stringify(standing.calculationJson, null, 2)}</pre>
-          </details>
+          <p className="text-center text-yellow-300 font-bold">Rank {standing.rank}</p>
         </Panel>
       ) : preReveal ? (
         <Panel className="w-full max-w-2xl">
