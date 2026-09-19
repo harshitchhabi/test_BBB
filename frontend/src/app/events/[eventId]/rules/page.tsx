@@ -53,8 +53,7 @@ export default function RulesPage({ params }: { params: Promise<{ eventId: strin
       <div className="w-full max-w-3xl p-4 md:p-6 overflow-y-auto text-yellow-100 text-sm md:text-base leading-relaxed bg-[#3b2a1a]/70 rounded-lg">
         <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
           <p className="text-yellow-300">
-            Rulebook version: {overview.event.rulesVersion} · Current stage:{" "}
-            <strong>{STAGE_LABELS[overview.event.status] ?? overview.event.status}</strong>
+            Current stage: <strong>{STAGE_LABELS[overview.event.status] ?? overview.event.status}</strong>
           </p>
           {overview.isStaff && (
             <a
