@@ -98,3 +98,34 @@ describe("transferLeadership", () => {
     ).rejects.toMatchObject({ code: "not_found" });
   });
 });
+
+describe("joinTeam (unwired dead code - kept guarded even if it were ever reachable)", () => {
+  it("refuses to join a team that already has its one login", async () => {
+    const { event, moderator } = await createTestFixture(dbModule.db);
+    const passwordHash = "$2a$10$CwTycUXWue0Thq9StjUM0uJ8oxL/Yjyq6XvXqAtVvjGdiWZOWXQNi";
+
+    // createTeamLogin only works pre-Stage-1; this fixture's event
+    // starts at stage_1 for the auction tests, so back it up first -
+    // joinTeam itself doesn't care about event status either way.
+    await dbModule.db.update(schema.events).set({ status: "setup" }).where(dbModule.eq(schema.events.id, event.id));
+
+    // A team shaped exactly like production ever creates one: one
+    // participant, one team_members row (the leader), via
+    // createTeamLogin - not the two-member test fixture above.
+    const solo = await engine.createTeamLogin({ eventId: event.id, actorParticipantId: moderator.id, teamName: "SoloTeam", username: `solo-${event.id.slice(0, 8)}` });
+
+    const [outsider] = await dbModule.db
+      .insert(schema.participants)
+      .values({ name: "Outsider", username: `outsider-${event.id.slice(0, 8)}`, passwordHash })
+      .returning();
+
+    await expect(
+      engine.joinTeam({ eventId: event.id, participantId: outsider.id, code: solo.team.code }),
+    ).rejects.toMatchObject({ code: "conflict" });
+
+    // Confirmed still exactly one login on the team - the rejected
+    // attempt never got as far as inserting a second row.
+    const members = await dbModule.db.select().from(schema.teamMembers).where(dbModule.eq(schema.teamMembers.teamId, solo.team.id));
+    expect(members).toHaveLength(1);
+  });
+});

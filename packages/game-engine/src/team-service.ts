@@ -225,6 +225,13 @@ async function insertTeamWithUniqueCode(
 // purpose, and letting anyone join a team by its code was also more
 // attack surface than benefit. frontend/src/app/api/events/[eventId]/
 // teams/join was removed entirely rather than just hidden.
+//
+// One login per team is enforced here too, not just by the missing
+// route — a team is capped at exactly one team_members row (its
+// leader, inserted once by createTeamTx when the login is created).
+// Even if this function were ever accidentally wired back up, or called
+// directly by some future script, it can never actually create a
+// second login on a team that already has one.
 export async function joinTeam(params: { eventId: string; participantId: string; code: string }) {
   return runInTransaction(async (tx) => {
     const [team] = await tx
@@ -240,6 +247,11 @@ export async function joinTeam(params: { eventId: string; participantId: string;
       .where(and(eq(teamMembers.eventId, params.eventId), eq(teamMembers.participantId, params.participantId)));
     if (existingMembership) {
       throw new GameError("conflict", "You are already on a team in this event.");
+    }
+
+    const [alreadyHasLogin] = await tx.select({ id: teamMembers.id }).from(teamMembers).where(eq(teamMembers.teamId, team.id));
+    if (alreadyHasLogin) {
+      throw new GameError("conflict", "This team already has its one login — a second login per team is not allowed.");
     }
 
     const [member] = await tx
